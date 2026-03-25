@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Email 維修紀錄小工具</title>
+    <style>
+        body { font-family: "Microsoft JhengHei", sans-serif; max-width: 1200px; margin: 20px auto; padding: 20px; background-color: #f4f7f9; color: #333; }
+        h2 { color: #0078d4; border-bottom: 2px solid #0078d4; padding-bottom: 10px; }
+        .grid-container { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .field { display: flex; flex-direction: column; }
+        .full-width { grid-column: span 3; }
+        label { font-weight: bold; margin-bottom: 5px; font-size: 14px; }
+        input[type="text"], input[type="date"], textarea {
+            padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;
+        }
+        textarea { resize: both; min-height: 100px; width: 100%; font-family: Consolas, "Courier New", monospace; }
+        .btn-group { margin: 20px 0; display: flex; gap: 10px; }
+        button { padding: 12px 20px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; transition: 0.3s; }
+        .btn-primary { background-color: #0078d4; color: white; flex: 2; }
+        .btn-secondary { background-color: #edebe9; color: #323130; border: 1px solid #8a8886; }
+        .btn-danger { background-color: #d83b01; color: white; }
+        .history-section { margin-top: 30px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .table-container { overflow-x: auto; margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; min-width: 1100px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 13px; vertical-align: top; }
+        th { background-color: #f8f9fa; }
+        td { white-space: pre-wrap; word-break: break-all; }
+    </style>
+</head>
+<body>
+
+    <h2>📧 查修報告</h2>
+
+    <div class="grid-container">
+        <div class="field">
+            <label>日期</label>
+            <input type="date" id="date">
+        </div>
+        <div class="field">
+            <label>測試廠 / 終端客戶</label>
+            <input type="text" id="client" placeholder=" ">
+        </div>
+        <div class="field">
+            <label>處理人員</label>
+            <input type="text" id="staff" placeholder=" ">
+        </div>
+        <div class="field">
+            <label>產品名</label>
+            <input type="text" id="product">
+        </div>
+        <div class="field">
+            <label>型號 (Model)</label>
+            <input type="text" id="modelType">
+        </div>
+        <div class="field">
+            <label>SN (序號)</label>
+            <input type="text" id="sn">
+        </div>
+        
+        <div class="field full-width">
+            <label>初始問題描述</label>
+            <textarea id="desc"></textarea>
+        </div>
+        <div class="field full-width">
+            <label>驗證查修過程 (每一行會自動加上編號)</label>
+            <textarea id="process" placeholder="第一行內容...&#10;第二行內容..."></textarea>
+        </div>
+        <div class="field full-width">
+            <label>後續做法與追蹤</label>
+            <textarea id="result"></textarea>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <button class="btn-primary" onclick="generateEmail()">🚀 產生 Outlook 草稿並紀錄</button>
+        <button class="btn-secondary" onclick="copyTable()">📋 複製紀錄表格</button>
+        <button class="btn-danger" onclick="clearHistory()">🗑️ 清除所有紀錄</button>
+    </div>
+
+    <div class="history-section">
+        <h3>📋 歷史紀錄區</h3>
+        <div class="table-container">
+            <table id="historyTable">
+                <thead>
+                    <tr>
+                        <th width="12%">工作事項</th>
+                        <th width="60%">工作進度</th>
+                        <th width="14%">處理人員</th>
+                        <th width="14%">日期</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+
+	// 優化後的初始化日期（確保符合本地時區）
+	const now = new Date();
+	const year = now.getFullYear();
+	const month = String(now.getMonth() + 1).padStart(2, '0'); // 月份從0開始，所以要+1
+	const day = String(now.getDate()).padStart(2, '0');
+	document.getElementById('date').value = `${year}-${month}-${day}`;
+
+        loadHistory();
+
+        // 修正後的編號邏輯：按一次 Enter 換行就編號
+        function formatProcess(text, prefix) {
+            if (!text.trim()) return "";
+            return text.split('\n')
+                       .map(line => line.trim())
+                       .filter(line => line !== "")
+                       .map((line, index) => `${prefix}${index + 1}. ${line}`)
+                       .join('\n');
+        }
+
+        function generateEmail() {
+            const rawDate = document.getElementById('date').value;
+            const displayDate = rawDate.replace(/-/g, '/');
+            const processRaw = document.getElementById('process').value;
+
+            const data = {
+                date: displayDate,
+                product: document.getElementById('product').value,
+                modelType: document.getElementById('modelType').value,
+                sn: document.getElementById('sn').value,
+                client: document.getElementById('client').value || "未註明",
+                staff: document.getElementById('staff').value,
+                desc: document.getElementById('desc').value,
+                process: processRaw,
+                result: document.getElementById('result').value
+            };
+
+            if (!data.desc && !data.process) {
+                alert("請輸入內容！");
+                return;
+            }
+
+            // Email 版：6-1., 6-2.
+            const emailProcess = formatProcess(data.process, "6-");
+            
+            const subject = `${data.product} 查修報告 SN:${data.sn}`;
+            const body = `Hi,\n\n今日查修狀況如下:\n1、 日期與時間：${data.date}\n\n2、 測試廠/終端客戶：${data.client}\n\n3、 產品名：${data.product} SN:${data.sn}\n\n4、 處理人員：${data.staff}\n\n5、 初始問題描述：\n${data.desc}\n\n6.驗證查修過程：\n${emailProcess}\n\n7.後續做法與追蹤：\n${data.result}\n\nThanks`;
+            
+            window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+            saveRecord(data);
+            loadHistory();
+        }
+
+        function saveRecord(record) {
+            let history = JSON.parse(localStorage.getItem('repair_history_v10') || '[]');
+            history.unshift(record);
+            localStorage.setItem('repair_history_v10', JSON.stringify(history));
+        }
+
+        function loadHistory() {
+            const history = JSON.parse(localStorage.getItem('repair_history_v10') || '[]');
+            const tbody = document.getElementById('historyBody');
+            tbody.innerHTML = '';
+            history.forEach(data => {
+                const row = tbody.insertRow();
+                // 歷史紀錄版：1., 2.
+                const historyProcess = formatProcess(data.process, "");
+                const combinedContent = `SN: ${data.sn} , ${data.desc}\n\n${historyProcess}\n${data.result}`;
+                
+                row.innerHTML = `
+                    <td>${data.modelType}</td>
+                    <td style="line-height: 1.6;">${combinedContent}</td>
+                    <td>${data.staff}</td>
+                    <td>${data.date}</td>
+                `;
+            });
+        }
+
+        function copyTable() {
+            const table = document.getElementById('historyTable');
+            const range = document.createRange();
+            range.selectNode(table);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            document.execCommand('copy');
+            alert('表格已複製！');
+            window.getSelection().removeAllRanges();
+        }
+
+        function clearHistory() {
+            if (confirm("確定要刪除所有紀錄嗎？")) {
+                localStorage.removeItem('repair_history_v10');
+                document.getElementById('historyBody').innerHTML = '';
+            }
+        }
+    </script>
+</body>
+</html>

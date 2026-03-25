@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工程師專用工具箱</title>
+    <style>
+        :root {
+            --primary: #0078d4;
+            --bg: #f0f2f5;
+            --card-bg: #ffffff;
+            --text: #323130;
+        }
+        body { font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 40px 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 50px; }
+        header h1 { color: var(--primary); font-size: 2.5rem; margin-bottom: 10px; }
+        header p { color: #605e5c; }
+
+        /* 卡片網格佈局 */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 25px; }
+
+        /* 卡片樣式 */
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 25px;
+            text-decoration: none;
+            color: inherit;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            border-top: 5px solid var(--primary);
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 20px rgba(0,0,0,0.1);
+        }
+        .icon { font-size: 40px; margin-bottom: 15px; }
+        .card h3 { margin: 0 0 10px 0; color: var(--primary); }
+        .card p { font-size: 14px; color: #605e5c; line-height: 1.5; margin-bottom: 20px; }
+        .status { font-size: 12px; font-weight: bold; padding: 4px 8px; border-radius: 20px; background: #dff6dd; color: #107c10; align-self: flex-start; }
+
+        @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>🛠️ 個人工作台</h1>
+        <p>提升效率的自動化工具集合</p>
+    </header>
+
+    <div class="grid">
+        <!-- 工具卡片 1 -->
+        <a href="自動查修報告與週報.html" class="card">
+            <div class="icon">📧</div>
+            <h3>查修報告工具</h3>
+            <p>快速產生 Outlook 查修報告草稿，並用週報格式呈現歷史紀錄。</p>
+            <span class="status">已上線</span>
+        </a>
+
+        <!-- 工具卡片 2 -->
+        <a href="A5000_長川_log_analyze.html" class="card">
+            <div class="icon">🔍</div>
+            <h3>快速尋找Fail Log異常值</h3>
+            <p>For A5000 或 長川    標示出Fail Log的異常值</p>
+            <span class="status">已上線</span>
+        </a>
+
+        <!-- 工具卡片 3 (預留位置) -->
+        <a href="#" class="card" style="opacity: 0.7; border-top-color: #8a8886;">
+            <div class="icon">📊</div>
+            <h3>還不知道要放什麼</h3>
+            <p>（規劃中）處於睡眠狀態。</p>
+            <span class="status" style="background:#fff4ce; color:#797775;">開發中</span>
+        </a>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Log 智慧偵測工具-不需上傳檔案</title>
+    <style>
+        :root { --primary: #0078d4; --danger: #d83b01; --success: #107c10; --bg: #f3f2f1; }
+        body { font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; background-color: var(--bg); margin: 0; padding: 20px; color: #323130; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        h2 { color: var(--primary); border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-top: 0; }
+        
+        .mode-indicator { display: inline-block; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; background: #e1dfdd; color: #605e5c; margin-bottom: 10px; }
+        .mode-active { background: #dff6dd; color: #107c10; }
+
+        textarea { width: 100%; height: 150px; padding: 12px; border: 2px dashed #a19f9d; border-radius: 8px; font-family: Consolas, monospace; font-size: 13px; box-sizing: border-box; transition: 0.3s; margin-bottom: 15px; }
+        textarea:focus { border-color: var(--primary); outline: none; background-color: #faf9f8; }
+        
+        .btn-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+        button { padding: 12px 20px; border: none; cursor: pointer; border-radius: 4px; font-weight: 600; transition: 0.2s; font-size: 14px; }
+        .btn-main { background-color: var(--primary); color: white; }
+        .btn-fail { background-color: var(--danger); color: white; display: none; }
+        .btn-export { background-color: var(--success); color: white; display: none; }
+        .btn-clear { background-color: #edebe9; color: #323130; }
+        button:hover { opacity: 0.85; }
+
+        #summary { padding: 15px; background: #f3f2f1; border-left: 5px solid var(--primary); border-radius: 4px; margin-bottom: 20px; display: none; font-size: 16px; }
+        .table-container { overflow: auto; max-height: 600px; border: 1px solid #edebe9; border-radius: 4px; }
+        table { border-collapse: collapse; width: 100%; font-size: 12px; background: white; }
+        th, td { border: 1px solid #f3f2f1; padding: 8px 12px; text-align: center; white-space: nowrap; }
+        
+        .spec-row { background-color: #0078d4 !important; color: white; font-weight: bold; }
+        .error-cell { background-color: #fde7e9 !important; color: #a4262c; font-weight: bold; border: 2px solid #a4262c !important; }
+        .focus-target { outline: 5px solid #ffaa00 !important; outline-offset: -5px; box-shadow: 0 0 15px rgba(255, 170, 0, 0.8); z-index: 10; }
+        #nav-info { font-size: 14px; font-weight: bold; color: var(--danger); display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🔍 Log 智慧偵測工具</h2>
+    <div id="modeDisplay" class="mode-indicator">等待資料貼上...</div>
+
+    <textarea id="rawInput" placeholder="在此處貼上 Excel 全部資料內容..."></textarea>
+    
+    <div class="btn-group">
+        <button class="btn-main" onclick="processData()">🚀 自動識別並分析</button>
+        <button id="prevBtn" class="btn-fail" onclick="navigateFail(-1)">⬅️ 上一個</button>
+        <button id="nextBtn" class="btn-fail" onclick="navigateFail(1)">下一個 ➡️</button>
+        <span id="nav-info"></span>
+        <button id="exportBtn" class="btn-export" onclick="exportToExcel()">📥 匯出 Excel</button>
+        <button class="btn-clear" onclick="clearAll()">🗑️ 清除</button>
+    </div>
+
+    <div id="summary"></div>
+
+    <div class="table-container">
+        <table id="targetTable"><tbody id="tableBody"></tbody></table>
+    </div>
+</div>
+
+<script>
+    let errorElements = []; 
+    let currentIndex = -1;
+
+    function processData() {
+        const input = document.getElementById('rawInput').value.trim();
+        if (!input) { alert("請先貼上資料！"); return; }
+
+        const rows = input.split('\n').map(row => row.split('\t'));
+        const tbody = document.getElementById('tableBody');
+        const summary = document.getElementById('summary');
+        const modeDisp = document.getElementById('modeDisplay');
+        
+        tbody.innerHTML = "";
+        errorElements = [];
+        currentIndex = -1;
+
+        // --- 核心：自動判定模式邏輯 ---
+        // 檢查第 18 列 (Index 17) 是否有值。
+        // A5000 的 Spec 在 17, 18 列；標準版此時應該還是空的或屬於資料區。
+        // 我們偵測：如果第 13-15 列是空的，但第 20 列有資料，則判定為 A5000。
+        let MIN_SPEC_ROW, MAX_SPEC_ROW, START_DATA_ROW, detectedMode;
+        
+        if (rows.length > 19 && rows[19][5] !== "" && (rows[12] === undefined || rows[12][5] === "")) {
+            // A5000 模式 (VBA: Spec 17,18 | Data 20)
+            MIN_SPEC_ROW = 16; MAX_SPEC_ROW = 17; START_DATA_ROW = 19;
+            detectedMode = "A5000 平台";
+        } else {
+            // 標準模式 (VBA: Spec 10,11 | Data 13)
+            MIN_SPEC_ROW = 9; MAX_SPEC_ROW = 10; START_DATA_ROW = 12;
+            detectedMode = "長川 平台";
+        }
+        
+        modeDisp.innerText = `偵測結果：${detectedMode}`;
+        modeDisp.className = "mode-indicator mode-active";
+
+        rows.forEach((row, rIdx) => {
+            const tr = document.createElement('tr');
+            if (rIdx === MIN_SPEC_ROW || rIdx === MAX_SPEC_ROW) tr.className = 'spec-row';
+
+            row.forEach((cell, cIdx) => {
+                const td = document.createElement('td');
+                const valStr = cell.trim();
+                td.innerText = valStr;
+
+                if (rIdx >= START_DATA_ROW && cIdx >= 5) {
+                    const val = parseFloat(valStr);
+                    const minL = parseFloat(rows[MIN_SPEC_ROW] ? rows[MIN_SPEC_ROW][cIdx] : NaN);
+                    const maxL = parseFloat(rows[MAX_SPEC_ROW] ? rows[MAX_SPEC_ROW][cIdx] : NaN);
+
+                    if (!isNaN(val) && !isNaN(minL) && !isNaN(maxL)) {
+                        let isFail = (maxL >= minL) ? (val > maxL || val < minL) : (val < maxL || val > minL);
+                        if (isFail) td.className = 'error-cell';
+                    }
+                }
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+
+        errorElements = document.querySelectorAll('.error-cell');
+        summary.style.display = "block";
+        summary.innerHTML = `✅ 辨識為 <strong>${detectedMode}</strong>。發現 <strong>${errorElements.length}</strong> 處異常。`;
+
+        const hasErrors = errorElements.length > 0;
+        document.getElementById('prevBtn').style.display = hasErrors ? "inline-block" : "none";
+        document.getElementById('nextBtn').style.display = hasErrors ? "inline-block" : "none";
+        document.getElementById('nav-info').style.display = hasErrors ? "inline-block" : "none";
+        document.getElementById('exportBtn').style.display = "inline-block";
+        updateNavText();
+    }
+
+    function navigateFail(direction) {
+        if (errorElements.length === 0) return;
+        if (currentIndex >= 0) errorElements[currentIndex].classList.remove('focus-target');
+        currentIndex += direction;
+        if (currentIndex < 0) currentIndex = errorElements.length - 1;
+        if (currentIndex >= errorElements.length) currentIndex = 0;
+        errorElements[currentIndex].scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        errorElements[currentIndex].classList.add('focus-target');
+        updateNavText();
+    }
+
+    function updateNavText() {
+        const info = document.getElementById('nav-info');
+        if (errorElements.length > 0) info.innerText = `(${currentIndex + 1} / ${errorElements.length})`;
+    }
+
+    function exportToExcel() {
+        let fileName = prompt("請輸入匯出的檔案名稱：", `Log報告_${new Date().toISOString().slice(0,10).replace(/-/g,'')}`);
+        if (!fileName) return;
+        const tableHtml = document.getElementById('targetTable').outerHTML;
+        const template = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org"><head><meta charset="UTF-8"><style>td { border: 0.5pt solid #ccc; text-align: center; font-family: "Microsoft JhengHei"; } .spec-row { background-color: #0078d4; color: #ffffff; font-weight: bold; } .error-cell { background-color: #ff4d4d; color: #ffffff; font-weight: bold; }</style></head><body>${tableHtml}</body></html>`;
+        const blob = new Blob([template], { type: "application/vnd.ms-excel" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `${fileName}.xls`;
+        link.click();
+    }
+
+    function clearAll() {
+        document.getElementById('rawInput').value = "";
+        document.getElementById('tableBody').innerHTML = "";
+        document.getElementById('summary').style.display = "none";
+        document.getElementById('modeDisplay').innerText = "等待資料貼上...";
+        document.getElementById('modeDisplay').className = "mode-indicator";
+        document.querySelectorAll('.btn-fail, #nav-info, .btn-export').forEach(el => el.style.display = 'none');
+        errorElements = []; currentIndex = -1;
+    }
+</script>
+</body>
+</html>
