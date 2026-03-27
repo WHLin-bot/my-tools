@@ -10,6 +10,7 @@
             --bg: #f0f2f5;
             --card-bg: #ffffff;
             --text: #323130;
+            --success: #107c10;
         }
         body { font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 40px 20px; }
         .container { max-width: 1000px; margin: 0 auto; }
@@ -41,6 +42,11 @@
         .card h3 { margin: 0 0 10px 0; color: var(--primary); }
         .card p { font-size: 14px; color: #605e5c; line-height: 1.5; margin-bottom: 20px; }
         .status { font-size: 12px; font-weight: bold; padding: 4px 8px; border-radius: 20px; background: #dff6dd; color: #107c10; align-self: flex-start; }
+
+        /* 管理師專用顏色 */
+        .admin-card { border-top-color: var(--success); }
+        .admin-card h3 { color: var(--success); }
+        .admin-status { background: #dff6dd; color: #107c10; }
 
         @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
     </style>
@@ -76,6 +82,22 @@
             <h3>工安回訓管理系統</h3>
             <p>管理人員受訓日期，自動計算下次受訓剩餘天數與提醒狀態。</p>
             <span class="status">已上線 (限區網)</span>
+        </a>
+
+        <!-- 工具卡片 4：快速請料工具 (工程師) -->
+        <a href="http://192.168.9.13" target="_blank" class="card">
+            <div class="icon">📦</div>
+            <h3>快速請料工具</h3>
+            <p>支援從 Excel 貼上料號，自動產生 Outlook 請料郵件格式。</p>
+            <span class="status">已上線 (限區網)</span>
+        </a>
+
+        <!-- 工具卡片 5：請料進度追蹤 (管理師) -->
+        <a href="http://192.168.9.13admin" target="_blank" class="card admin-card">
+            <div class="icon">📋</div>
+            <h3>請料進度管理</h3>
+            <p>管理師專用：填寫請購單號、確認送達狀態與輸入備註資訊。</p>
+            <span class="status admin-status">管理師專用</span>
         </a>
     </div>
 </div>
