@@ -2,6 +2,53 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
+    <title>工安回訓管理系統 V2.1</title>
+    <style>
+        /* 頁面美化 */
+        body { font-family: "Microsoft JhengHei", sans-serif; background: #f0f2f5; padding: 30px; color: #333; }
+        .container { max-width: 1100px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        h2 { color: #1a73e8; border-bottom: 2px solid #e8f0fe; padding-bottom: 10px; margin-top: 0; }
+        
+        /* 輸入區域 */
+        .input-box { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 25px; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; border: 1px solid #e9ecef; }
+        .input-group { display: flex; flex-direction: column; }
+        label { font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #5f6368; }
+        input { padding: 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; }
+        input:focus { border-color: #1a73e8; outline: none; }
+        
+        /* 按鈕樣式 */
+        button { padding: 10px 20px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; transition: 0.2s; }
+        .btn-save { background: #28a745; color: white; }
+        .btn-save:hover { background: #218838; }
+        .btn-del { background: #dc3545; color: white; padding: 5px 12px; font-size: 13px; }
+        .btn-del:hover { background: #c82333; }
+        .btn-edit { background: #17a2b8; color: white; padding: 5px 12px; font-size: 13px; margin-right: 5px; }
+
+        /* 表格樣式 */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 15px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #f1f3f4; color: #5f6368; font-size: 14px; }
+        tr:hover { background-color: #fcfdfe; }
+        
+        /* 狀態標籤 */
+        .status { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; display: inline-block; }
+        .expired { background: #fce8e6; color: #d93025; border: 1px solid #f9d2ce; }
+        .warning { background: #fff7e6; color: #d48806; border: 1px solid #ffe7ba; }
+        .safe { background: #e6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+        
+        .days-text { font-weight: bold; font-family: Consolas, monospace; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>👷 工安課回訓排程管理系統</h2>
+    
+    <div class="input-box">
+        <div class="input-group"><!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>工程師專用工具箱</title>
     <style>
@@ -102,5 +149,154 @@
     </div>
 </div>
 
+</body>
+</html>
+            <label>員工姓名</label>
+            <input type="text" id="name" placeholder="輸入姓名">
+        </div>
+        <div class="input-group">
+            <label>本次受訓日期</label>
+            <input type="date" id="lastDate" onchange="autoFillNextDate(this.value)">
+        </div>
+        <div class="input-group">
+            <label>下次受訓日期 (預設三年後)</label>
+            <input type="date" id="nextDate">
+        </div>
+        <button class="btn-save" onclick="submitData()">💾 儲存 / 更新紀錄</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>姓名</th>
+                <th>上次受訓日期</th>
+                <th>下次受訓日期</th>
+                <th>距離下次剩餘</th>
+                <th>提醒狀態</th>
+                <th>管理操作</th>
+            </tr>
+        </thead>
+        <tbody id="listBody">
+            </tbody>
+    </table>
+</div>
+
+<script>
+    // 1. 頁面載入後自動抓取資料
+    document.addEventListener("DOMContentLoaded", loadData);
+
+    // 2. 自動推算一年後的日期
+    function autoFillNextDate(val) {
+        if(!val) return;
+        let d = new Date(val);
+        d.setFullYear(d.getFullYear() + 3);
+        document.getElementById('nextDate').value = d.toISOString().split('T')[0];
+    }
+
+    // 3. 從後端抓取 Excel 資料並顯示
+    async function loadData() {
+        try {
+            const res = await fetch('/list');
+            const users = await res.json();
+            const tbody = document.getElementById('listBody');
+            tbody.innerHTML = '';
+            
+            const today = new Date();
+            today.setHours(0,0,0,0);
+
+            users.forEach(user => {
+                const nextD = new Date(user.nextDate);
+                const diffDays = Math.ceil((nextD - today) / (1000 * 60 * 60 * 24));
+                
+                let statusClass = "safe", statusText = "狀態正常";
+                
+                if (diffDays < 0) {
+                    statusClass = "expired";
+                    statusText = `❗ 已過期 (${Math.abs(diffDays)} 天)`;
+                } else if (diffDays <= 30) {
+                    statusClass = "warning";
+                    statusText = `⚠️ 剩 ${diffDays} 天需排課`;
+                } else {
+                    statusClass = "safe";
+                    statusText = `✅ 有效 (剩 ${diffDays} 天)`;
+                }
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${user.name}</strong></td>
+                        <td>${user.lastDate}</td>
+                        <td>${user.nextDate}</td>
+                        <td class="days-text">${diffDays > 0 ? diffDays : 0} 天</td>
+                        <td><span class="status ${statusClass}">${statusText}</span></td>
+                        <td>
+                            <button class="btn-edit" onclick="prepareUpdate('${user.name}', '${user.lastDate}', '${user.nextDate}')">編輯</button>
+                            <button class="btn-del" onclick="deleteUser('${user.name}')">刪除</button>
+                        </td>
+                    </tr>`;
+            });
+        } catch (err) {
+            console.error("載入失敗:", err);
+        }
+    }
+
+    // 4. 送出資料（新增或更新）
+    async function submitData() {
+        const name = document.getElementById('name').value.trim();
+        const lastDate = document.getElementById('lastDate').value;
+        const nextDate = document.getElementById('nextDate').value;
+
+        if(!name || !lastDate || !nextDate) return alert("請完整輸入姓名與兩組日期！");
+
+        const res = await fetch('/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, lastDate, nextDate })
+        });
+
+        const result = await res.json();
+        alert(result.message);
+        
+        // 清空輸入欄位
+        document.getElementById('name').value = '';
+        document.getElementById('lastDate').value = '';
+        document.getElementById('nextDate').value = '';
+        
+        // 重新載入清單
+        loadData();
+    }
+
+    // 5. 刪除資料（關鍵：使用 await 確保後端完成才重新整理）
+    async function deleteUser(name) {
+        if(!confirm(`確定要刪除 [${name}] 的紀錄嗎？\n刪除後 Excel 檔案也會同步移除該行。`)) return;
+
+        try {
+            const res = await fetch('/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+            
+            const result = await res.json();
+
+            if (res.ok) {
+                alert(result.message);
+                // 成功後立即重新整理畫面
+                await loadData();
+            } else {
+                alert("錯誤：" + result.message);
+            }
+        } catch (error) {
+            alert("連線失敗，請檢查 CMD 視窗是否維持開啟狀態。");
+        }
+    }
+
+    // 6. 點擊編輯後，將資料填回上方輸入框
+    function prepareUpdate(name, last, next) {
+        document.getElementById('name').value = name;
+        document.getElementById('lastDate').value = last;
+        document.getElementById('nextDate').value = next;
+        window.scrollTo({ top: 0, behavior: 'smooth' }); // 平滑捲動到上方
+    }
+</script>
 </body>
 </html>
