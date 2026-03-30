@@ -90,8 +90,7 @@ def archive_done_records():
             for item in to_archive:
                 clean_date = item.get('time', '').split(' ')[0]
                 ship_date = get_oqc_ship_date(item.get('path', ''))
-                
-                item['ship_date'] = ship_date # 存入 JSON
+                item['ship_date'] = ship_date 
                 
                 export_data.append({
                     "客戶名稱": item.get('customer', ''),
@@ -136,10 +135,13 @@ def create_folders():
         
     sn_path = os.path.join(DB_PATH, customer, model, sn)
     today = datetime.now().strftime('%Y%m%d')
+    iqc_folder_name = f"{today}_IQC"
+    iqc_path = os.path.join(sn_path, iqc_folder_name)
+    oqc_path = os.path.join(sn_path, f"{today}_OQC")
     
     try:
-        os.makedirs(os.path.join(sn_path, f"{today}_IQC"), exist_ok=True)
-        os.makedirs(os.path.join(sn_path, f"{today}_OQC"), exist_ok=True)
+        os.makedirs(iqc_path, exist_ok=True)
+        os.makedirs(oqc_path, exist_ok=True)
         records = load_records(HIST_FILE)
         records.append({
             "time": datetime.now().strftime('%Y-%m-%d %H:%M'),
@@ -147,7 +149,10 @@ def create_folders():
         })
         save_records(HIST_FILE, records)
         messagebox.showinfo("成功", "資料夾已建立！")
-        os.startfile(sn_path)
+        
+        # 【優化 1】建立後直接開啟該筆資料的 IQC 資料夾
+        if os.path.exists(iqc_path): os.startfile(iqc_path)
+        
         refresh_search()
     except Exception as e: messagebox.showerror("錯誤", f"建立失敗：{e}")
 
@@ -165,7 +170,6 @@ def refresh_done_tab():
     for item in tree_done.get_children(): tree_done.delete(item)
     records = load_records(DONE_FILE)
     for r in reversed(records):
-        # 從 JSON 中讀取 ship_date，如果沒有則顯示 N/A
         ship_date = r.get('ship_date', 'N/A')
         tree_done.insert("", "end", values=(r['time'], r['customer'], r.get('cust_id', 'N/A'), r['model'], r['sn'], r.get('staff', 'N/A'), ship_date, "✅ 已歸檔", r['path']), tags=("gray",))
 
@@ -173,14 +177,28 @@ def open_selected(event):
     tv = event.widget
     selected = tv.selection()
     if not selected: return
-    path = tv.item(selected, "values")[-1]
-    if os.path.exists(path): os.startfile(path)
-    else: messagebox.showerror("錯誤", "找不到路徑！")
+    base_path = tv.item(selected, "values")[-1]
+    
+    if not os.path.exists(base_path):
+        messagebox.showerror("錯誤", "找不到路徑！")
+        return
+
+    # 【優化 2】雙擊列表時自動尋找並開啟 OQC 資料夾
+    target_path = base_path
+    try:
+        subfolders = [f for f in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, f))]
+        for f in subfolders:
+            if "OQC" in f:
+                target_path = os.path.join(base_path, f)
+                break
+    except: pass
+    
+    os.startfile(target_path)
 
 # --- UI 介面 ---
 root = tk.Tk()
-root.title("IQC/OQC 管理系統 v4.3")
-root.geometry("1300x850") # 稍微調寬以容納新欄位
+root.title("IQC/OQC 管理系統 v4.3.1")
+root.geometry("1300x850")
 
 FONT_MAIN = ("微軟正黑體", 12)
 FONT_BOLD = ("微軟正黑體", 12, "bold")
@@ -213,7 +231,7 @@ notebook.pack(fill="both", expand=True, padx=20, pady=10)
 
 # --- 分頁 1: 進行中 ---
 tab_active = tk.Frame(notebook)
-notebook.add(tab_active, text=" 進行中資料 ")
+notebook.add(tab_active, text=" 進行中資料 (雙擊開啟 OQC) ")
 
 frame_search = tk.Frame(tab_active)
 frame_search.pack(fill="x", pady=10, padx=10)
@@ -226,7 +244,6 @@ entry_search.bind("<KeyRelease>", refresh_search)
 tk.Button(frame_search, text="🔄 更新狀態", command=refresh_search, font=FONT_MAIN).pack(side="left", padx=5)
 tk.Button(frame_search, text="📦 產出CSV '稽核表單專用'", command=archive_done_records, bg="#27AE60", fg="white", font=FONT_BOLD).pack(side="right", padx=5)
 
-# 進行中欄位不變
 columns_active = ("建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "目前狀態", "路徑")
 tree = ttk.Treeview(tab_active, columns=columns_active, show="headings")
 for col in columns_active: 
@@ -239,7 +256,6 @@ tree.pack(fill="both", expand=True, padx=10, pady=5)
 tab_done = tk.Frame(notebook)
 notebook.add(tab_done, text=" 已歸檔歷史 (Done) ")
 
-# 【修正】歷史分頁加入「出貨日期」欄位
 columns_done = ("建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "出貨日期", "狀態", "路徑")
 tree_done = ttk.Treeview(tab_done, columns=columns_done, show="headings")
 for col in columns_done: 
