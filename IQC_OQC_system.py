@@ -135,7 +135,10 @@ root.geometry("1200x850")
 
 FONT_LABEL, FONT_ENTRY, FONT_BTN = ("微軟正黑體", 12), ("微軟正黑體", 12), ("微軟正黑體", 12, "bold")
 
+# 重要：解決 EXE 打包後底色消失的問題
 style = ttk.Style()
+style.theme_use('clam') # 強制使用 'clam' 主題以支援標籤底色
+
 style.configure("TNotebook.Tab", font=FONT_LABEL, padding=[10, 5])
 style.configure("Treeview.Heading", font=FONT_BTN)
 style.configure("Treeview", font=("微軟正黑體", 11), rowheight=35)
@@ -171,7 +174,12 @@ tk.Button(tools_todo, text="🔄 更新", command=refresh_all_lists, font=FONT_L
 tree_todo = ttk.Treeview(tab_todo, columns=("選取", "建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "狀態", "路徑"), show="headings")
 for col in ["選取", "建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "狀態"]: tree_todo.heading(col, text=col)
 tree_todo.column("選取", width=50, anchor="center"); tree_todo.column("路徑", width=0, stretch=False)
-tree_todo.tag_configure("green", background="#DFF2BF"); tree_todo.tag_configure("orange", background="#FEEFB3"); tree_todo.tag_configure("red", background="#FFBABA")
+
+# 定義顏色標籤 (需與更新顯示邏輯中的 color_tag 對應)
+tree_todo.tag_configure("green", background="#DFF2BF", foreground="#270")
+tree_todo.tag_configure("orange", background="#FEEFB3", foreground="#9F6000")
+tree_todo.tag_configure("red", background="#FFBABA", foreground="#D8000C")
+
 tree_todo.pack(fill="both", expand=True)
 tree_todo.bind("<Button-1>", toggle_todo_check)
 tree_todo.bind("<Double-1>", lambda e: open_path_from_tree(tree_todo))
@@ -189,7 +197,7 @@ for col in ["建立時間", "客戶", "客戶編號", "型號", "SN", "作業人
 tree_done.column("路徑", width=0, stretch=False); tree_done.pack(fill="both", expand=True)
 tree_done.bind("<Double-1>", lambda e: open_path_from_tree(tree_done))
 
-tk.Label(root, text=f"📍 資料庫：{DB_PATH}", fg="gray", font=("微軟正黑體", 10)).pack(side="bottom", anchor="w", padx=20)
+tk.Label(root, text=f"📍 目前資料庫路徑: {DB_PATH}", fg="gray", font=("微軟正黑體", 10)).pack(side="bottom", anchor="w", padx=20)
 
 refresh_all_lists()
 root.mainloop()
