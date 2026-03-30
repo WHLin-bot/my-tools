@@ -18,6 +18,23 @@ os.makedirs(HIST_DIR, exist_ok=True)
 
 # ----------------- 功能邏輯 -----------------
 
+def get_oqc_ship_date(sn_path):
+    """從 OQC 資料夾中抓取最新照片/檔案的日期作為出貨日期"""
+    try:
+        if not os.path.exists(sn_path): return ""
+        for folder in os.listdir(sn_path):
+            if "OQC" in folder:
+                full_folder_path = os.path.join(sn_path, folder)
+                if os.path.isdir(full_folder_path):
+                    files = [os.path.join(full_folder_path, f) for f in os.listdir(full_folder_path) 
+                             if os.path.isfile(os.path.join(full_folder_path, f))]
+                    if files:
+                        latest_file = max(files, key=os.path.getmtime)
+                        mtime = os.path.getmtime(latest_file)
+                        return datetime.fromtimestamp(mtime).strftime('%Y-%m-%d')
+    except: pass
+    return "N/A"
+
 def get_folder_status(sn_path):
     """檢查路徑下是否有照片"""
     if not os.path.exists(sn_path): return "路徑遺失", "red"
@@ -46,7 +63,7 @@ def save_records(file_path, data):
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 def archive_done_records():
-    """轉移已完成資料並產出 CSV (自定義欄位與日期格式)"""
+    """轉移已完成資料並產出 CSV (自定義欄位與出貨日期抓取)"""
     records = load_records(HIST_FILE)
     done_records = load_records(DONE_FILE)
     new_active, to_archive = [], []
@@ -72,20 +89,25 @@ def archive_done_records():
             export_data = []
             for item in to_archive:
                 clean_date = item.get('time', '').split(' ')[0]
+                ship_date = get_oqc_ship_date(item.get('path', ''))
+                
+                item['ship_date'] = ship_date # 存入 JSON
+                
                 export_data.append({
                     "客戶名稱": item.get('customer', ''),
                     "產品型號": item.get('model', ''),
                     "SN編號": item.get('sn', ''),
                     "客戶編號": item.get('cust_id', ''),
                     "建立日期": clean_date,
-                    "作業人員": item.get('staff', '')
+                    "作業人員": item.get('staff', ''),
+                    "出貨日期": ship_date
                 })
 
             done_records.extend(to_archive)
             save_records(DONE_FILE, done_records)
             save_records(HIST_FILE, new_active)
 
-            fieldnames = ["客戶名稱", "產品型號", "SN編號", "客戶編號", "建立日期", "作業人員"]
+            fieldnames = ["客戶名稱", "產品型號", "SN編號", "客戶編號", "建立日期", "作業人員", "出貨日期"]
             with open(csv_path, 'w', newline='', encoding='utf-8-sig') as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
@@ -143,7 +165,9 @@ def refresh_done_tab():
     for item in tree_done.get_children(): tree_done.delete(item)
     records = load_records(DONE_FILE)
     for r in reversed(records):
-        tree_done.insert("", "end", values=(r['time'], r['customer'], r.get('cust_id', 'N/A'), r['model'], r['sn'], r.get('staff', 'N/A'), "✅ 已歸檔", r['path']), tags=("gray",))
+        # 從 JSON 中讀取 ship_date，如果沒有則顯示 N/A
+        ship_date = r.get('ship_date', 'N/A')
+        tree_done.insert("", "end", values=(r['time'], r['customer'], r.get('cust_id', 'N/A'), r['model'], r['sn'], r.get('staff', 'N/A'), ship_date, "✅ 已歸檔", r['path']), tags=("gray",))
 
 def open_selected(event):
     tv = event.widget
@@ -156,7 +180,7 @@ def open_selected(event):
 # --- UI 介面 ---
 root = tk.Tk()
 root.title("IQC/OQC 管理系統 v4.3")
-root.geometry("1250x850")
+root.geometry("1300x850") # 稍微調寬以容納新欄位
 
 FONT_MAIN = ("微軟正黑體", 12)
 FONT_BOLD = ("微軟正黑體", 12, "bold")
@@ -202,11 +226,12 @@ entry_search.bind("<KeyRelease>", refresh_search)
 tk.Button(frame_search, text="🔄 更新狀態", command=refresh_search, font=FONT_MAIN).pack(side="left", padx=5)
 tk.Button(frame_search, text="📦 產出CSV '稽核表單專用'", command=archive_done_records, bg="#27AE60", fg="white", font=FONT_BOLD).pack(side="right", padx=5)
 
-columns = ("建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "目前狀態", "路徑")
-tree = ttk.Treeview(tab_active, columns=columns, show="headings")
-for col in columns: 
+# 進行中欄位不變
+columns_active = ("建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "目前狀態", "路徑")
+tree = ttk.Treeview(tab_active, columns=columns_active, show="headings")
+for col in columns_active: 
     tree.heading(col, text=col, command=lambda _c=col: treeview_sort_column(tree, _c, False))
-    tree.column(col, width=120, anchor="center")
+    tree.column(col, width=110, anchor="center")
 tree.column("路徑", width=0, stretch=False)
 tree.pack(fill="both", expand=True, padx=10, pady=5)
 
@@ -214,10 +239,12 @@ tree.pack(fill="both", expand=True, padx=10, pady=5)
 tab_done = tk.Frame(notebook)
 notebook.add(tab_done, text=" 已歸檔歷史 (Done) ")
 
-tree_done = ttk.Treeview(tab_done, columns=columns, show="headings")
-for col in columns: 
+# 【修正】歷史分頁加入「出貨日期」欄位
+columns_done = ("建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "出貨日期", "狀態", "路徑")
+tree_done = ttk.Treeview(tab_done, columns=columns_done, show="headings")
+for col in columns_done: 
     tree_done.heading(col, text=col, command=lambda _c=col: treeview_sort_column(tree_done, _c, False))
-    tree_done.column(col, width=120, anchor="center")
+    tree_done.column(col, width=110, anchor="center")
 tree_done.column("路徑", width=0, stretch=False)
 tree_done.pack(fill="both", expand=True, padx=10, pady=10)
 
