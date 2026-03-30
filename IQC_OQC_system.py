@@ -23,10 +23,12 @@ def get_folder_status(sn_path):
         for folder in os.listdir(sn_path):
             full_path = os.path.join(sn_path, folder)
             if os.path.isdir(full_path):
+                # 檢查子資料夾內是否有檔案
                 has_files = any(os.path.isfile(os.path.join(full_path, f)) for f in os.listdir(full_path))
                 if "IQC" in folder and has_files: has_iqc = True
                 if "OQC" in folder and has_files: has_oqc = True
     except: pass
+    
     if has_iqc and has_oqc: return "✅ 已完成", "green"
     if has_iqc or has_oqc: return "⚠️ 部分上傳", "orange"
     return "❌ 尚未放照片", "red"
@@ -67,13 +69,11 @@ def create_folders():
         return
         
     today = datetime.now().strftime('%Y%m%d')
-    # 【修正】資料夾結構不包含客戶編號：DB_PATH / 客戶名稱 / 型號 / SN
     sn_path = os.path.join(DB_PATH, customer, model, sn)
     
     try:
         os.makedirs(os.path.join(sn_path, f"{today}_IQC"), exist_ok=True)
         os.makedirs(os.path.join(sn_path, f"{today}_OQC"), exist_ok=True)
-        # 紀錄中依然保留 cust_id 供搜尋與顯示
         save_record(customer, cust_id, model, sn, staff, sn_path)
         messagebox.showinfo("成功", f"資料夾已建立！\n人員: {staff}")
         os.startfile(sn_path)
@@ -91,6 +91,7 @@ def refresh_search(event=None):
                     search_targets = [r.get('sn', ''), r.get('customer', ''), r.get('cust_id', ''), r.get('model', ''), r.get('staff', '')]
                     if any(query in str(t).lower() for t in search_targets):
                         status_text, color_tag = get_folder_status(r['path'])
+                        # 插入資料並帶入對應的 tag
                         tree.insert("", "end", values=(r['time'], r['customer'], r.get('cust_id', 'N/A'), r['model'], r['sn'], r.get('staff', 'N/A'), status_text, r['path']), tags=(color_tag,))
         except: pass
 
@@ -110,22 +111,26 @@ FONT_LABEL = ("微軟正黑體", 12)
 FONT_ENTRY = ("微軟正黑體", 12)
 FONT_BTN = ("微軟正黑體", 12, "bold")
 
+# 【修正點】使用 ttk.Style 並強制指定主題為 'clam'
+# Windows 預設主題會覆蓋 Treeview 的背景標籤，clam 是支援度最好的跨平台主題
 style = ttk.Style()
+style.theme_use('clam') 
+
 style.configure("Treeview.Heading", font=("微軟正黑體", 12, "bold"))
 style.configure("Treeview", font=("微軟正黑體", 11), rowheight=30)
+# 修正選取時的顏色，確保不會遮蓋底色文字
+style.map("Treeview", background=[('selected', '#347083')]) 
 
 # 1. 輸入區
 frame_input = tk.LabelFrame(root, text=" 建立IQC資訊 ", font=FONT_LABEL, padx=10, pady=10)
 frame_input.pack(fill="x", padx=20, pady=10)
 
-# 第一排：客戶名稱、產品型號
 tk.Label(frame_input, text="客戶名稱:", font=FONT_LABEL).grid(row=0, column=0, sticky="w", pady=5)
 entry_customer = tk.Entry(frame_input, width=15, font=FONT_ENTRY); entry_customer.grid(row=0, column=1, padx=5)
 
 tk.Label(frame_input, text="產品型號:", font=FONT_LABEL).grid(row=0, column=2, sticky="w", pady=5)
 entry_model = tk.Entry(frame_input, width=15, font=FONT_ENTRY); entry_model.grid(row=0, column=3, padx=5)
 
-# 第二排：SN 編號、客戶編號、作業人員
 tk.Label(frame_input, text="SN 編號:", font=FONT_LABEL).grid(row=1, column=0, sticky="w", pady=5)
 entry_sn = tk.Entry(frame_input, width=15, font=FONT_ENTRY); entry_sn.grid(row=1, column=1, padx=5)
 
@@ -135,7 +140,6 @@ entry_cust_id = tk.Entry(frame_input, width=15, font=FONT_ENTRY); entry_cust_id.
 tk.Label(frame_input, text="作業人員:", font=FONT_LABEL).grid(row=1, column=4, sticky="w", pady=5)
 entry_staff = tk.Entry(frame_input, width=10, font=FONT_ENTRY); entry_staff.grid(row=1, column=5, padx=5)
 
-# 建立按鈕
 btn_create = tk.Button(frame_input, text="➕ 建立資料夾並開啟", command=create_folders, bg="#2E86C1", fg="white", font=FONT_BTN)
 btn_create.grid(row=0, column=6, rowspan=2, sticky="nswe", padx=15)
 
@@ -163,6 +167,7 @@ tree.column("建立時間", width=140); tree.column("客戶", width=90); tree.co
 tree.column("型號", width=100); tree.column("SN", width=140); tree.column("作業人員", width=90)
 tree.column("目前狀態", width=120); tree.column("路徑", width=0, stretch=False)
 
+# 設定顏色標籤
 tree.tag_configure("green", background="#DFF2BF", foreground="#270")
 tree.tag_configure("orange", background="#FEEFB3", foreground="#9F6000")
 tree.tag_configure("red", background="#FFBABA", foreground="#D8000C")
