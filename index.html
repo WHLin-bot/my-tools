@@ -11,8 +11,6 @@
             --card-bg: #ffffff;
             --text: #323130;
             --success: #107c10;
-            --danger: #d13438; /* 新增危險紅 */
-            --warning: #ffaa44; /* 新增警告橘 */
         }
         body { font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 40px 20px; }
         .container { max-width: 1000px; margin: 0 auto; }
@@ -20,8 +18,10 @@
         header h1 { color: var(--primary); font-size: 2.5rem; margin-bottom: 10px; }
         header p { color: #605e5c; }
 
+        /* 卡片網格佈局 */
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 25px; }
 
+        /* 卡片樣式 */
         .card {
             background: var(--card-bg);
             border-radius: 12px;
@@ -34,67 +34,21 @@
             flex-direction: column;
             border-top: 5px solid var(--primary);
         }
-        .card:hover { transform: translateY(-5px); box-shadow: 0 12px 20px rgba(0,0,0,0.1); }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 20px rgba(0,0,0,0.1);
+        }
         .icon { font-size: 40px; margin-bottom: 15px; }
         .card h3 { margin: 0 0 10px 0; color: var(--primary); }
         .card p { font-size: 14px; color: #605e5c; line-height: 1.5; margin-bottom: 20px; }
         .status { font-size: 12px; font-weight: bold; padding: 4px 8px; border-radius: 20px; background: #dff6dd; color: #107c10; align-self: flex-start; }
 
+        /* 管理師專用顏色 */
         .admin-card { border-top-color: var(--success); }
         .admin-card h3 { color: var(--success); }
         .admin-status { background: #dff6dd; color: #107c10; }
 
-        /* ==================== 側邊提醒小卡樣式 ==================== */
-        #safety-widget {
-            position: fixed;
-            right: 0;
-            top: 100px;
-            width: 280px;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px); /* 磨砂效果 */
-            box-shadow: -5px 0 25px rgba(0,0,0,0.15);
-            border-radius: 15px 0 0 15px;
-            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            z-index: 1000;
-            padding: 20px;
-            border: 1px solid rgba(0,0,0,0.05);
-        }
-        /* 隱藏狀態 */
-        .widget-hidden { transform: translateX(280px); }
-
-        #toggle-btn {
-            position: absolute;
-            left: -45px;
-            top: 20px;
-            width: 45px;
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 15px 5px;
-            cursor: pointer;
-            border-radius: 10px 0 0 10px;
-            font-size: 13px;
-            font-weight: bold;
-            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
-            writing-mode: vertical-lr; /* 文字直排 */
-        }
-
-        .widget-title { font-weight: bold; font-size: 16px; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; color: #333; }
-        .alert-item { 
-            background: #fdfdfd; 
-            padding: 10px; 
-            border-radius: 8px; 
-            margin-bottom: 10px; 
-            border-left: 4px solid #eee;
-            font-size: 13px;
-        }
-        .alert-danger { border-left-color: var(--danger); background: #fff8f8; }
-        .alert-warning { border-left-color: var(--warning); background: #fffcf5; }
-        
-        #alert-list { max-height: 400px; overflow-y: auto; padding-right: 5px; }
-        .no-data { color: #888; text-align: center; font-size: 13px; padding: 20px 0; }
-
-        @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } #safety-widget { width: 220px; } .widget-hidden { transform: translateX(220px); } }
+        @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -106,6 +60,7 @@
     </header>
 
     <div class="grid">
+        <!-- 工具卡片 1 -->
         <a href="自動查修報告與週報.html" class="card">
             <div class="icon">📧</div>
             <h3>查修報告工具</h3>
@@ -113,20 +68,23 @@
             <span class="status">已上線</span>
         </a>
 
+        <!-- 工具卡片 2 -->
         <a href="A5000_長川_log_analyze.html" class="card">
             <div class="icon">🔍</div>
             <h3>快速尋找Fail Log異常值</h3>
-            <p>For A5000 或 長川 標示出Fail Log的異常值</p>
+            <p>For A5000 或 長川    標示出Fail Log的異常值</p>
             <span class="status">已上線</span>
         </a>
 
-        <a href="http://192.168.9.189:3000/" target="_blank" class="card">
+        <!-- 工具卡片 3：工安回訓管理系統 -->
+        <a href="http://192.168.9" target="_blank" class="card">
             <div class="icon">👷</div>
             <h3>工安回訓管理系統</h3>
             <p>管理人員受訓日期，自動計算下次受訓剩餘天數與提醒狀態。</p>
             <span class="status">已上線 (限區網)</span>
         </a>
 
+        <!-- 工具卡片 4：快速請料工具 (工程師) -->
         <a href="http://192.168.9.189:3001" target="_blank" class="card">
             <div class="icon">📦</div>
             <h3>快速請料工具</h3>
@@ -134,22 +92,23 @@
             <span class="status">已上線 (限區網)</span>
         </a>
 
-        <a href="http://192.168.9.189:3001/admin" target="_blank" class="card admin-card">
+        <!-- 工具卡片 5：請料進度追蹤 (管理師) -->
+        <a href="http://192.168.9" target="_blank" class="card admin-card">
             <div class="icon">📋</div>
             <h3>請料進度管理</h3>
             <p>管理師專用：填寫請購單號、確認送達狀態與輸入備註資訊。</p>
             <span class="status admin-status">管理師專用</span>
         </a>
+
+        <!-- 工具卡片 6：CSV 轉客戶維修產品收發紀錄表 -->
+        <a href="IOQC_CSV轉紙本表單.html" class="card">
+            <div class="icon">📝</div>
+            <h3>維修收發紀錄表轉換</h3>
+            <p>貼上 CSV 內容，快速產生符合 ISO 規範的 F-FAE002 列印稽核表單。</p>
+            <span class="status">已上線</span>
+        </a>
     </div>
 </div>
 
-<div id="safety-widget" class="widget-hidden">
-    <button id="toggle-btn" onclick="toggleWidget()">📅 工安到期提醒</button>
-    <div class="widget-title">👷 即將到期名單</div>
-    <div id="alert-list">
-        <div class="no-data">正在連線至區網主機...</div>
-    </div>
-    <div style="text-align: right; margin-top: 15px;">
-        <a href="http://192.168.9.189:3000/" target="_blank" style="font-size: 12px; color: var(--primary); text-decoration: none;">開啟完整系統 →</a>
-    </div>
-</div>
+</body>
+</html>
