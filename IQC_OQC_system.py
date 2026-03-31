@@ -155,7 +155,6 @@ def create_folders():
         
         refresh_search()
     except Exception as e: messagebox.showerror("錯誤", f"建立失敗：{e}")
-
 def refresh_search(event=None):
     query = entry_search.get().strip().lower()
     for item in tree.get_children(): tree.delete(item)
@@ -166,12 +165,16 @@ def refresh_search(event=None):
             status_text, color_tag = get_folder_status(r['path'])
             tree.insert("", "end", values=(r['time'], r['customer'], r.get('cust_id', 'N/A'), r['model'], r['sn'], r.get('staff', 'N/A'), status_text, r['path']), tags=(color_tag,))
 
-def refresh_done_tab():
+# 僅針對此函數內部補上 query 搜尋過濾邏輯，不影響原功能
+def refresh_done_tab(event=None):
+    query = entry_done_search.get().strip().lower()
     for item in tree_done.get_children(): tree_done.delete(item)
     records = load_records(DONE_FILE)
     for r in reversed(records):
-        ship_date = r.get('ship_date', 'N/A')
-        tree_done.insert("", "end", values=(r['time'], r['customer'], r.get('cust_id', 'N/A'), r['model'], r['sn'], r.get('staff', 'N/A'), ship_date, "✅ 已歸檔", r['path']), tags=("gray",))
+        targets = [r.get('sn',''), r.get('customer',''), r.get('cust_id',''), r.get('model',''), r.get('staff',''), r.get('ship_date','')]
+        if any(query in str(t).lower() for t in targets):
+            ship_date = r.get('ship_date', 'N/A')
+            tree_done.insert("", "end", values=(r['time'], r['customer'], r.get('cust_id', 'N/A'), r['model'], r['sn'], r.get('staff', 'N/A'), ship_date, "✅ 已歸檔", r['path']), tags=("gray",))
 
 def open_selected(event):
     tv = event.widget
@@ -252,9 +255,19 @@ for col in columns_active:
 tree.column("路徑", width=0, stretch=False)
 tree.pack(fill="both", expand=True, padx=10, pady=5)
 
-# --- 分頁 2: 已歸檔 ---
+# --- 分頁 2: 已歸檔 (僅在此分頁最上方仿照分頁 1 補上搜尋條) ---
 tab_done = tk.Frame(notebook)
 notebook.add(tab_done, text=" 已歸檔歷史 (Done) ")
+
+frame_done_search = tk.Frame(tab_done)
+frame_done_search.pack(fill="x", pady=10, padx=10)
+
+tk.Label(frame_done_search, text="搜尋:", font=FONT_MAIN).pack(side="left")
+entry_done_search = tk.Entry(frame_done_search, font=FONT_MAIN)
+entry_done_search.pack(side="left", fill="x", expand=True, padx=10)
+entry_done_search.bind("<KeyRelease>", refresh_done_tab) # 綁定鍵盤放開事件，打字即可搜尋
+
+tk.Button(frame_done_search, text="🔄 更新狀態", command=refresh_done_tab, font=FONT_MAIN).pack(side="left", padx=5)
 
 columns_done = ("建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "出貨日期", "狀態", "路徑")
 tree_done = ttk.Treeview(tab_done, columns=columns_done, show="headings")
