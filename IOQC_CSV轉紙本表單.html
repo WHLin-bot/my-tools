@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>CSV轉-客戶維修產品收發紀錄表 - v1.14</title>
+    <style>
+        /* 1. 操作介面樣式 */
+        body { background: #f0f2f5; margin: 0; font-family: "Microsoft JhengHei", sans-serif; }
+        .no-print { 
+            background: white; padding: 25px; border-radius: 12px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1); max-width: 900px; 
+            margin: 20px auto; 
+        }
+        textarea { width: 100%; height: 120px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; margin-top: 10px; }
+        .btn-area { text-align: center; margin-top: 20px; }
+        button { background: #2E86C1; color: white; border: none; padding: 12px 60px; cursor: pointer; border-radius: 6px; font-size: 18px; font-weight: bold; }
+
+        /* 2. 列印樣式 */
+        .page { 
+            font-family: "DFKai-SB", "標楷體", "BiauKai", serif; 
+            width: 297mm; height: 210mm; 
+            padding: 8mm 12mm 8mm 12mm; margin: 0 auto; 
+            background: white; page-break-after: always; 
+            display: flex; flex-direction: column; box-sizing: border-box;
+            font-size: 10pt; overflow: hidden;
+        }
+
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 0px; table-layout: fixed; }
+        
+        .logo-area { width: 35%; text-align: left; vertical-align: top; padding-top: 5px; }
+        .logo-area img { max-height: 45px; width: auto; display: block; object-fit: contain; }
+        
+        .title-area { 
+            width: 30%; text-align: center; font-size: 16pt; 
+            font-weight: normal; text-decoration: underline; vertical-align: top;
+            padding-top: 5px; 
+        }
+        .empty-area { width: 35%; } 
+
+        .main-table { 
+            width: 100%; border-collapse: collapse; table-layout: fixed; 
+            border: 2px solid black; 
+            margin-top: 4px; 
+        }
+        
+        /* 表頭(th)維持原始標楷體，字級 10pt */
+        .main-table th { 
+            border: 1px solid black; text-align: center; vertical-align: middle; 
+            font-size: 10pt; height: 32px; padding: 0; line-height: 1.1; 
+            font-weight: normal;
+            position: relative; 
+            font-family: "DFKai-SB", "標楷體", "BiauKai", serif;
+        }
+
+        /* 🌟 核心修改：只將數據儲存格(td)指定微軟正黑體，且字體縮小至 8pt */
+        .main-table td { 
+            border: 1px solid black; text-align: center; vertical-align: middle; 
+            font-size: 8pt; height: 32px; padding: 0; line-height: 1.1; 
+            font-weight: normal;
+            position: relative; 
+            font-family: "Microsoft JhengHei", "Heiti TC", "Helvetica", sans-serif;
+        }
+
+        /* 雙線核心邏輯 */
+        .split-line { border-right: none !important; }
+        .hide-left { border-left: none !important; }
+
+        .split-line::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            right: -2px; 
+            bottom: 0;
+            width: 4px; 
+            border-left: 1px solid black;
+            border-right: 1px solid black;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .remark-area { margin-top: 8px; font-size: 10pt; text-align: left; font-weight: normal; }
+        
+        .footer-container { 
+            display: flex; justify-content: space-between; align-items: flex-end; 
+            margin-top: auto; padding-bottom: 5mm; 
+            font-size: 9pt; 
+            padding: 0 20px; 
+            box-sizing: border-box; 
+        }
+        .footer-box { flex: 1; font-weight: normal; }
+
+        @media print {
+            .no-print { display: none; }
+            body { background: white; padding: 0; }
+            .page { margin: 0; border: none; width: 297mm; height: 210mm; }
+            @page { size: landscape; margin: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<img id="hiddenLogo" src="logo.png" style="display:none;">
+
+<div class="no-print">
+    <h2 style="color:#2E86C1; margin-top:0;">📋 CSV轉-客戶維修產品收發紀錄表 v1.14</h2>
+    <p>💡 請將CSV<b>'內容'</b>貼到下方空格處，<b>表頭請勿貼上</b>。</p>
+    <textarea id="dataIn" placeholder="貼上 CSV 資料列..."></textarea>
+    <div class="btn-area">
+        <button onclick="generatePrint()">⚡ 產生表單預覽</button>
+        <p>💡 產生表單後按下<b>  Ctrl + P  </b>即可開始列印。</p>
+    </div>
+</div>
+
+<div id="printArea"></div>
+
+<script>
+function generatePrint() {
+    const dataIn = document.getElementById('dataIn').value.trim();
+    const output = document.getElementById('printArea');
+    if (!dataIn) { alert("請先貼上資料！"); return; }
+
+    const logoImg = document.getElementById('hiddenLogo');
+    const logoHtml = logoImg.complete && logoImg.naturalHeight !== 0 
+                     ? '<img src="logo.png">' 
+                     : '<div style="color:#ccc; font-size:10px; border:1px dashed #ccc; padding:5px; width:fit-content;">(logo.png)</div>';
+
+    const dataRows = dataIn.split('\n').map(row => 
+        row.split('\t').map(cell => cell.trim().replace(/^"|"$/g, ''))
+    );
+
+    const rowsPerPage = 15; 
+    output.innerHTML = "";
+
+    for (let i = 0; i < dataRows.length; i += rowsPerPage) {
+        const chunk = dataRows.slice(i, i + rowsPerPage);
+        const currentPage = Math.floor(i / rowsPerPage) + 1;
+        const totalPages = Math.ceil(dataRows.length / rowsPerPage);
+        const page = document.createElement('div');
+        page.className = 'page';
+        
+        let html = `
+            <table class="header-table">
+                <tr>
+                    <td class="logo-area">${logoHtml}</td>
+                    <td class="title-area">客戶維修產品收發紀錄表</td>
+                    <td class="empty-area"></td>
+                </tr>
+            </table>
+
+            <table class="main-table">
+                <thead>
+                    <tr>
+                        <th rowspan="2" style="width: 8.5%;">客戶名稱</th>
+                        <th rowspan="2" style="width: 12.5%;">產品型號</th>
+                        <th rowspan="2" style="width: 8.5%;">產品序號</th>
+                        <th rowspan="2" style="width: 8.5%;">客戶編號</th>
+                        <th colspan="3" style="width: 20%;">接收單位 (FAE)</th>
+                        <th rowspan="2" style="width: 5.5%;">外觀檢驗<br>(V)</th>
+                        <th rowspan="2" style="width: 5.5%;">拍照確認<br>(V)</th>
+                        <th rowspan="2" class="split-line" style="width: 7.5%;">組課長確認</th>
+                        <th colspan="3" class="hide-left" style="width: 23.5%;">領取單位 (業務部/客戶)</th>
+                    </tr>
+                    <tr>
+                        <!-- FAE 區塊比例 -->
+                        <th style="width: 2.5%;">數量</th>
+                        <th style="width: 11.5%;">日期<br>(西元年/月/日)</th>
+                        <th style="width: 6%;">維修人員</th>
+                        
+                        <!-- 領取區塊比例 -->
+                        <th class="hide-left" style="width: 2.5%;">數量</th>
+                        <th style="width: 14.5%;">日期<br>(西元年/月/日)</th>
+                        <th style="width: 6.5%;">領取人員</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+        for (let j = 0; j < 15; j++) {
+            const d = chunk[j];
+            if (d) {
+                html += `<tr>
+                    <td>${d[0] || ''}</td><td>${d[1] || ''}</td>
+                    <td>${d[2] || ''}</td><td>${d[3] || ''}</td>
+                    <td>1</td><td>${d[4] || ''}</td><td>${d[5] || ''}</td>
+                    <td>V</td><td>V</td><td class="split-line"></td>
+                    <td class="hide-left">1</td><td>${d[6] || ''}</td><td>外務</td>
+                </tr>`;
+            } else {
+                html += `<tr>
+                    <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="split-line"></td><td class="hide-left"></td><td></td><td></td>
+                </tr>`;
+            }
+        }
+
+        html += `</tbody></table>
+            <div class="remark-area">Remark:</div>
+            <div class="footer-container">
+                <div class="footer-box" style="text-align:left;">流程:單位管理人→單位存檔<br>記錄保存：7年</div>
+                <div class="footer-box" style="text-align:center;">Page ${currentPage} of ${totalPages}</div>
+                <div class="footer-box" style="text-align:right;">表單編號：F-FAE002<br>版次：04</div>
+            </div>`;
+
+        page.innerHTML = html;
+        output.appendChild(page);
+    }
+}
+</script>
+</body>
+</html>
