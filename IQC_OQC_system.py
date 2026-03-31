@@ -150,11 +150,12 @@ def create_folders():
         save_records(HIST_FILE, records)
         messagebox.showinfo("成功", "資料夾已建立！")
         
-        # 【優化 1】建立後直接開啟該筆資料的 IQC 資料夾
+        # 建立後直接開啟該筆資料的 IQC 資料夾
         if os.path.exists(iqc_path): os.startfile(iqc_path)
         
         refresh_search()
     except Exception as e: messagebox.showerror("錯誤", f"建立失敗：{e}")
+
 def refresh_search(event=None):
     query = entry_search.get().strip().lower()
     for item in tree.get_children(): tree.delete(item)
@@ -163,9 +164,9 @@ def refresh_search(event=None):
         targets = [r.get('sn',''), r.get('customer',''), r.get('cust_id',''), r.get('model',''), r.get('staff','')]
         if any(query in str(t).lower() for t in targets):
             status_text, color_tag = get_folder_status(r['path'])
-            tree.insert("", "end", values=(r['time'], r['customer'], r.get('cust_id', 'N/A'), r['model'], r['sn'], r.get('staff', 'N/A'), status_text, r['path']), tags=(color_tag,))
+            # 填入 IQC 與 OQC 的點擊引導文字
+            tree.insert("", "end", values=(r['time'], r['customer'], r.get('cust_id', 'N/A'), r['model'], r['sn'], r.get('staff', 'N/A'), status_text, "📂 開啟 IQC", "📂 開啟 OQC", r['path']), tags=(color_tag,))
 
-# 僅針對此函數內部補上 query 搜尋過濾邏輯，不影響原功能
 def refresh_done_tab(event=None):
     query = entry_done_search.get().strip().lower()
     for item in tree_done.get_children(): tree_done.delete(item)
@@ -174,34 +175,70 @@ def refresh_done_tab(event=None):
         targets = [r.get('sn',''), r.get('customer',''), r.get('cust_id',''), r.get('model',''), r.get('staff',''), r.get('ship_date','')]
         if any(query in str(t).lower() for t in targets):
             ship_date = r.get('ship_date', 'N/A')
-            tree_done.insert("", "end", values=(r['time'], r['customer'], r.get('cust_id', 'N/A'), r['model'], r['sn'], r.get('staff', 'N/A'), ship_date, "✅ 已歸檔", r['path']), tags=("gray",))
+            # 填入 IQC 與 OQC 的點擊引導文字
+            tree_done.insert("", "end", values=(r['time'], r['customer'], r.get('cust_id', 'N/A'), r['model'], r['sn'], r.get('staff', 'N/A'), ship_date, "✅ 已歸檔", "📂 開啟 IQC", "📂 開啟 OQC", r['path']), tags=("gray",))
 
 def open_selected(event):
     tv = event.widget
     selected = tv.selection()
     if not selected: return
-    base_path = tv.item(selected, "values")[-1]
+    
+    # 取得點擊的欄位與被點擊的行資料
+    column = tv.identify_column(event.x)
+    item_values = tv.item(selected, "values")
+    base_path = item_values[-1] # 最後一欄是隱藏的完整路徑
     
     if not os.path.exists(base_path):
-        messagebox.showerror("錯誤", "找不到路徑！")
+        messagebox.showerror("錯誤", f"找不到基礎路徑：\n{base_path}")
         return
 
-    # 【優化 2】雙擊列表時自動尋找並開啟 OQC 資料夾
-    target_path = base_path
-    try:
-        subfolders = [f for f in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, f))]
-        for f in subfolders:
-            if "OQC" in f:
-                target_path = os.path.join(base_path, f)
-                break
-    except: pass
-    
-    os.startfile(target_path)
+    target_path = base_path # 預設路徑
+
+    # 針對「進行中」分頁 (共 10 欄，索引 0~9)
+    if tv == tree:
+        # column 格式為 "#8" 代表點到第 8 欄 (IQC) 或 "#9" 代表第 9 欄 (OQC)
+        if column == "#8": # 開啟 IQC
+            try:
+                for f in os.listdir(base_path):
+                    if "IQC" in f and os.path.isdir(os.path.join(base_path, f)):
+                        target_path = os.path.join(base_path, f)
+                        break
+            except: pass
+            os.startfile(target_path)
+            
+        elif column == "#9": # 開啟 OQC
+            try:
+                for f in os.listdir(base_path):
+                    if "OQC" in f and os.path.isdir(os.path.join(base_path, f)):
+                        target_path = os.path.join(base_path, f)
+                        break
+            except: pass
+            os.startfile(target_path)
+
+    # 針對「已歸檔」分頁 (共 11 欄，索引 0~10)
+    elif tv == tree_done:
+        if column == "#9": # 開啟 IQC
+            try:
+                for f in os.listdir(base_path):
+                    if "IQC" in f and os.path.isdir(os.path.join(base_path, f)):
+                        target_path = os.path.join(base_path, f)
+                        break
+            except: pass
+            os.startfile(target_path)
+            
+        elif column == "#10": # 開啟 OQC
+            try:
+                for f in os.listdir(base_path):
+                    if "OQC" in f and os.path.isdir(os.path.join(base_path, f)):
+                        target_path = os.path.join(base_path, f)
+                        break
+            except: pass
+            os.startfile(target_path)
 
 # --- UI 介面 ---
 root = tk.Tk()
-root.title("IQC/OQC 管理系統 v4.3.1")
-root.geometry("1300x850")
+root.title("IQC/OQC 管理系統 v4.3.2")
+root.geometry("1400x850") # 寬度微調大一點，容納更多格子
 
 FONT_MAIN = ("微軟正黑體", 12)
 FONT_BOLD = ("微軟正黑體", 12, "bold")
@@ -234,7 +271,7 @@ notebook.pack(fill="both", expand=True, padx=20, pady=10)
 
 # --- 分頁 1: 進行中 ---
 tab_active = tk.Frame(notebook)
-notebook.add(tab_active, text=" 進行中資料 (雙擊開啟 OQC) ")
+notebook.add(tab_active, text=" 進行中資料 (點擊儲存格開啟資料夾) ")
 
 frame_search = tk.Frame(tab_active)
 frame_search.pack(fill="x", pady=10, padx=10)
@@ -247,15 +284,18 @@ entry_search.bind("<KeyRelease>", refresh_search)
 tk.Button(frame_search, text="🔄 更新狀態", command=refresh_search, font=FONT_MAIN).pack(side="left", padx=5)
 tk.Button(frame_search, text="📦 產出CSV '稽核表單專用'", command=archive_done_records, bg="#27AE60", fg="white", font=FONT_BOLD).pack(side="right", padx=5)
 
-columns_active = ("建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "目前狀態", "路徑")
+# 新增了 "IQC 資料夾" 與 "OQC 資料夾" 欄位
+columns_active = ("建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "目前狀態", "IQC 資料夾", "OQC 資料夾", "路徑")
 tree = ttk.Treeview(tab_active, columns=columns_active, show="headings")
 for col in columns_active: 
     tree.heading(col, text=col, command=lambda _c=col: treeview_sort_column(tree, _c, False))
     tree.column(col, width=110, anchor="center")
+tree.column("IQC 資料夾", width=130, anchor="center") # 固定寬度
+tree.column("OQC 資料夾", width=130, anchor="center")
 tree.column("路徑", width=0, stretch=False)
 tree.pack(fill="both", expand=True, padx=10, pady=5)
 
-# --- 分頁 2: 已歸檔 (僅在此分頁最上方仿照分頁 1 補上搜尋條) ---
+# --- 分頁 2: 已歸檔 ---
 tab_done = tk.Frame(notebook)
 notebook.add(tab_done, text=" 已歸檔歷史 (Done) ")
 
@@ -265,15 +305,18 @@ frame_done_search.pack(fill="x", pady=10, padx=10)
 tk.Label(frame_done_search, text="搜尋:", font=FONT_MAIN).pack(side="left")
 entry_done_search = tk.Entry(frame_done_search, font=FONT_MAIN)
 entry_done_search.pack(side="left", fill="x", expand=True, padx=10)
-entry_done_search.bind("<KeyRelease>", refresh_done_tab) # 綁定鍵盤放開事件，打字即可搜尋
+entry_done_search.bind("<KeyRelease>", refresh_done_tab) 
 
 tk.Button(frame_done_search, text="🔄 更新狀態", command=refresh_done_tab, font=FONT_MAIN).pack(side="left", padx=5)
 
-columns_done = ("建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "出貨日期", "狀態", "路徑")
+# 已歸檔也同步新增了 "IQC 資料夾" 與 "OQC 資料夾" 欄位
+columns_done = ("建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "出貨日期", "狀態", "IQC 資料夾", "OQC 資料夾", "路徑")
 tree_done = ttk.Treeview(tab_done, columns=columns_done, show="headings")
 for col in columns_done: 
     tree_done.heading(col, text=col, command=lambda _c=col: treeview_sort_column(tree_done, _c, False))
     tree_done.column(col, width=110, anchor="center")
+tree_done.column("IQC 資料夾", width=130, anchor="center")
+tree_done.column("OQC 資料夾", width=130, anchor="center")
 tree_done.column("路徑", width=0, stretch=False)
 tree_done.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -282,7 +325,10 @@ for t in [tree, tree_done]:
     t.tag_configure("orange", background="#FEEFB3", foreground="#9F6000")
     t.tag_configure("red", background="#FFBABA", foreground="#D8000C")
     t.tag_configure("gray", background="#F2F2F2", foreground="#666")
-    t.bind("<Double-1>", open_selected)
+    
+    # 【關鍵修改】不再使用 Double-1 (雙擊)，改用 <ButtonRelease-1> (單擊放開) 
+    # 這樣使用者只要點擊「📂 開啟 IQC」這格，就會瞬間觸發打開。
+    t.bind("<ButtonRelease-1>", open_selected)
 
 path_info = tk.Label(root, text=f"📍 資料夾根路徑: {DB_PATH}", fg="gray", font=("微軟正黑體", 10))
 path_info.pack(side="bottom", anchor="w", padx=20, pady=5)
