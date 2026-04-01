@@ -1,55 +1,48 @@
+import os
+import json
+import csv
+import tkinter as tk  # <-- 確保這行在最前面，解決 NameError 問題！
+from tkinter import messagebox, ttk, filedialog
+from datetime import datetime
 import sys
 import shutil
 import subprocess
-import os
 
 # ==========================================
 # 0. 版本號與自動更新設定
 # ==========================================
-CURRENT_VERSION = "4.3.2"  # <<< 每次更新功能，就手動改這個數字
+CURRENT_VERSION = "4.3.2" 
 
-# 網路硬碟路徑（依據您的需求，全部集中在 IOQC_folder_history 底下）
 UPDATE_DIR = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\IOQC_folder_history"
 VERSION_FILE_PATH = os.path.join(UPDATE_DIR, "version.txt")
 REMOTE_TXT_EXE = os.path.join(UPDATE_DIR, "IQC_OQC_system.txt")
 
 def check_for_updates():
-    # 防呆：如果是在 Python 開發環境 (如 VS Code) 執行，不觸發更新，避免開發時檔案被蓋掉
     current_exe = sys.executable 
     if not current_exe.endswith(".exe"):
         return
         
     try:
-        # 1. 檢查網路上有沒有版本紀錄檔
         if os.path.exists(VERSION_FILE_PATH):
             with open(VERSION_FILE_PATH, "r", encoding="utf-8") as f:
                 server_version = f.read().strip()
             
-            # 2. 比對版本號（只要遠端字串不等於目前版本，就視為需要更新）
             if server_version != CURRENT_VERSION:
-                
-                # 複製網路上的 .txt 到本地，先命名為 _new.exe
                 temp_exe = current_exe.replace(".exe", "_new.exe")
                 shutil.copy2(REMOTE_TXT_EXE, temp_exe)
                 
-                # 3. 呼叫 Windows 終端機 (cmd) 
-                # 邏輯：等 3 秒 -> 強制覆蓋舊 .exe -> 再等 2 秒(確保檔案寫入完整) -> 啟動新程式
+                # 維持 3~5 秒的等待緩衝
                 cmd_command = f'timeout /t 3 /nobreak >nul && move /y "{temp_exe}" "{current_exe}" && timeout /t 2 /nobreak >nul && start "" "{current_exe}"'
-                
-                # 執行指令（使用 subprocess.Popen 讓它在背景跑）
                 subprocess.Popen(cmd_command, shell=True)
-                
-                # 4. 立即結束目前的 Python 程式
                 sys.exit(0)
-                
     except Exception as e:
-        # 更新失敗時不阻礙使用者，直接讓他們繼續用舊版
         print(f"自動更新失敗: {e}")
 
-# ⚠️ 程式剛啟動，第一時間先檢查更新！
+# 執行更新檢查
 check_for_updates()
+
 # ==========================================
-# 1. 路徑鎖定
+# 1. 路徑鎖定 (接下來接您原本的程式...)
 # ==========================================
 DB_PATH = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區"
 HIST_DIR = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\IOQC_folder_history"
