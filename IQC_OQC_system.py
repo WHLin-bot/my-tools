@@ -19,11 +19,9 @@ REMOTE_TXT_EXE = os.path.join(UPDATE_DIR, "IQC_OQC_system.txt")
 
 def check_for_updates():
     current_exe = sys.executable 
-    if not current_exe.endswith(".exe"):
-        return
-        
-    # --- 【分身自毀與交接】維持不變，防 DLL Load 失敗 ---
-    if "_new.exe" in current_exe:
+    
+    # --- A 區：新程式剛開機時的自潔與交接 ---
+    if current_exe and "_new.exe" in current_exe:
         original_exe = current_exe.replace("_new.exe", ".exe")
         try:
             cmd_self_destruct = f'timeout /t 1 /nobreak >nul && move /y "{current_exe}" "{original_exe}" && start "" "{original_exe}"'
@@ -32,26 +30,43 @@ def check_for_updates():
         except:
             pass
         
+    # --- B 區：正常的版本偵測與更新提示 ---
     try:
-        if os.path.exists(VERSION_FILE_PATH):
-            with open(VERSION_FILE_PATH, "r", encoding="utf-8") as f:
-                server_version = f.read().strip()
+        if not os.path.exists(VERSION_FILE_PATH):
+            return
             
-            # 偵測到新版本！
-            if server_version != CURRENT_VERSION:
-                # 彈出提示視窗，告知使用者即將更新
+        with open(VERSION_FILE_PATH, "r", encoding="utf-8") as f:
+            server_version = f.read().strip()
+        
+        # 如果版本不符
+        if server_version != CURRENT_VERSION:
+            
+            # 【關鍵修正】：使用 PyInstaller 官方標準判斷
+            # 只要是打包後的 .exe，sys 模組一定會帶有 'frozen' 屬性
+            if getattr(sys, 'frozen', False):
+                
+                # A. 先跳出通知
                 messagebox.showinfo(
                     "系統更新提示", 
-                    f"偵測到新版本【v{server_version}】！\n\n系統將自動進行背景更新，並重新啟動程式，請稍候..."
+                    f"偵測到新版本【v{server_version}】！\n目前版本為【v{CURRENT_VERSION}】。\n\n系統將自動進行背景更新，並重新啟動程式，請稍候..."
                 )
                 
                 temp_exe = current_exe.replace(".exe", "_new.exe")
+                
+                # B. 下載檔案
                 shutil.copy2(REMOTE_TXT_EXE, temp_exe)
                 
+                # C. 啟動分身，並結束本尊
                 subprocess.Popen([temp_exe])
                 sys.exit(0)
+                
+            else:
+                # 如果是直接點擊 .py 執行的話，就只在終端機顯示文字
+                print(f"開發環境中偵測到新版本 v{server_version}，略過自動更新。")
+                
     except Exception as e:
-        print(f"自動更新失敗: {e}")
+        print(f"自動更新程式發生異常: {e}")
+
 
 
 # ==========================================
