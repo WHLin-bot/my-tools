@@ -9,7 +9,7 @@ import os
 CURRENT_VERSION = "4.3.2"  # <<< 每次更新功能，就手動改這個數字
 
 # 網路硬碟路徑設定
-VERSION_FILE_PATH = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\System_Release\version.txt"
+VERSION_FILE_PATH = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\System_Release\IQC_OQC_system_version.txt"
 REMOTE_TXT_EXE = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\System_Release\IQC_OQC_system.txt"
 
 def check_for_updates():
