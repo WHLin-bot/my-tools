@@ -35,17 +35,19 @@ def get_oqc_ship_date(sn_path):
     except: pass
     return "N/A"
 
-def get_folder_status(sn_path):
-    """檢查路徑下是否有照片"""
+def get_folder_status(sn_path, date_keyword):
+    """檢查路徑下是否有照片 (綁定特定日期)"""
     if not os.path.exists(sn_path): return "路徑遺失", "red"
     has_iqc, has_oqc = False, False
     try:
         for folder in os.listdir(sn_path):
-            full_path = os.path.join(sn_path, folder)
-            if os.path.isdir(full_path):
-                has_files = any(os.path.isfile(os.path.join(full_path, f)) for f in os.listdir(full_path))
-                if "IQC" in folder and has_files: has_iqc = True
-                if "OQC" in folder and has_files: has_oqc = True
+            # 必須同時符合「該日期」與「檢驗類型」
+            if date_keyword in folder:
+                full_path = os.path.join(sn_path, folder)
+                if os.path.isdir(full_path):
+                    has_files = any(os.path.isfile(os.path.join(full_path, f)) for f in os.listdir(full_path))
+                    if "IQC" in folder and has_files: has_iqc = True
+                    if "OQC" in folder and has_files: has_oqc = True
     except: pass
     if has_iqc and has_oqc: return "✅ 已完成", "green"
     if has_iqc or has_oqc: return "⚠️ 部分上傳", "orange"
@@ -69,7 +71,13 @@ def archive_done_records():
     new_active, to_archive = [], []
 
     for r in records:
-        status, _ = get_folder_status(r['path'])
+        # 關鍵修正：從 'time' 中取出日期 (例如 "2026-04-01") 並轉為 "20260401"
+        create_time_str = r.get('time', '')
+        date_keyword = create_time_str[:10].replace("-", "")
+        
+        # 補上 date_keyword 參數，讓狀態檢查不會報錯
+        status, _ = get_folder_status(r['path'], date_keyword)
+        
         if status == "✅ 已完成": to_archive.append(r)
         else: new_active.append(r)
 
@@ -119,6 +127,7 @@ def archive_done_records():
     refresh_search()
     refresh_done_tab()
 
+
 def treeview_sort_column(tv, col, reverse):
     l = [(tv.set(k, col), k) for k in tv.get_children('')]
     l.sort(reverse=reverse)
@@ -163,8 +172,15 @@ def refresh_search(event=None):
     for r in reversed(records):
         targets = [r.get('sn',''), r.get('customer',''), r.get('cust_id',''), r.get('model',''), r.get('staff','')]
         if any(query in str(t).lower() for t in targets):
-            status_text, color_tag = get_folder_status(r['path'])
-            # 填入 IQC 與 OQC 的點擊引導文字
+            
+            # 從記錄中抓出建立日期 (格式如: "2026-04-01 15:30")
+            create_time_str = r.get('time', '')
+            # 轉換成 "20260401"
+            date_keyword = create_time_str[:10].replace("-", "")
+            
+            # 將 date_keyword 丟進去判斷
+            status_text, color_tag = get_folder_status(r['path'], date_keyword)
+            
             tree.insert("", "end", values=(r['time'], r['customer'], r.get('cust_id', 'N/A'), r['model'], r['sn'], r.get('staff', 'N/A'), status_text, "📂 開啟 IQC", "📂 開啟 OQC", r['path']), tags=(color_tag,))
 
 def refresh_done_tab(event=None):
@@ -186,6 +202,12 @@ def open_selected(event):
     # 取得點擊的欄位與被點擊的行資料
     column = tv.identify_column(event.x)
     item_values = tv.item(selected, "values")
+    
+    # 關鍵：從畫面上抓取「建立時間」 (格式如: 2026-04-01 15:30)
+    # 取出前 10 個字，並把橫線去掉，變成 "20260401"
+    create_time_str = item_values[0] 
+    date_keyword = create_time_str[:10].replace("-", "") 
+    
     base_path = item_values[-1] # 最後一欄是隱藏的完整路徑
     
     if not os.path.exists(base_path):
@@ -196,11 +218,11 @@ def open_selected(event):
 
     # 針對「進行中」分頁 (共 10 欄，索引 0~9)
     if tv == tree:
-        # column 格式為 "#8" 代表點到第 8 欄 (IQC) 或 "#9" 代表第 9 欄 (OQC)
         if column == "#8": # 開啟 IQC
             try:
                 for f in os.listdir(base_path):
-                    if "IQC" in f and os.path.isdir(os.path.join(base_path, f)):
+                    # 同時比對 "日期" 與 "IQC" 字眼，精準鎖定
+                    if date_keyword in f and "IQC" in f and os.path.isdir(os.path.join(base_path, f)):
                         target_path = os.path.join(base_path, f)
                         break
             except: pass
@@ -209,7 +231,8 @@ def open_selected(event):
         elif column == "#9": # 開啟 OQC
             try:
                 for f in os.listdir(base_path):
-                    if "OQC" in f and os.path.isdir(os.path.join(base_path, f)):
+                    # 同時比對 "日期" 與 "OQC" 字眼
+                    if date_keyword in f and "OQC" in f and os.path.isdir(os.path.join(base_path, f)):
                         target_path = os.path.join(base_path, f)
                         break
             except: pass
@@ -220,7 +243,7 @@ def open_selected(event):
         if column == "#9": # 開啟 IQC
             try:
                 for f in os.listdir(base_path):
-                    if "IQC" in f and os.path.isdir(os.path.join(base_path, f)):
+                    if date_keyword in f and "IQC" in f and os.path.isdir(os.path.join(base_path, f)):
                         target_path = os.path.join(base_path, f)
                         break
             except: pass
@@ -229,11 +252,12 @@ def open_selected(event):
         elif column == "#10": # 開啟 OQC
             try:
                 for f in os.listdir(base_path):
-                    if "OQC" in f and os.path.isdir(os.path.join(base_path, f)):
+                    if date_keyword in f and "OQC" in f and os.path.isdir(os.path.join(base_path, f)):
                         target_path = os.path.join(base_path, f)
                         break
             except: pass
             os.startfile(target_path)
+
 
 # --- UI 介面 ---
 root = tk.Tk()
