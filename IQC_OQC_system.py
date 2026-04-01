@@ -1,10 +1,53 @@
+import sys
+import shutil
+import subprocess
 import os
-import json
-import csv
-import tkinter as tk
-from tkinter import messagebox, ttk, filedialog
-from datetime import datetime
 
+# ==========================================
+# 0. 版本號與自動更新設定
+# ==========================================
+CURRENT_VERSION = "4.3.2"  # <<< 每次更新功能，就手動改這個數字
+
+# 網路硬碟路徑設定
+VERSION_FILE_PATH = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\System_Release\version.txt"
+REMOTE_TXT_EXE = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\System_Release\IQC_OQC_system.txt"
+
+def check_for_updates():
+    # 防呆：如果是在 Python 原始碼環境 (如 VS Code) 執行，不觸發更新，避免開發時檔案被蓋掉
+    current_exe = sys.executable 
+    if not current_exe.endswith(".exe"):
+        return
+        
+    try:
+        # 1. 檢查網路上有沒有版本紀錄檔
+        if os.path.exists(VERSION_FILE_PATH):
+            with open(VERSION_FILE_PATH, "r", encoding="utf-8") as f:
+                server_version = f.read().strip()
+            
+            # 2. 比對版本號（只要遠端字串不等於目前版本，就視為需要更新）
+            # (如果想更嚴謹，可以將字串拆開比對數字大小：list(map(int, server_version.split('.'))))
+            if server_version != CURRENT_VERSION:
+                
+                # 複製網路上的 .txt 到本地，先命名為 _new.exe
+                temp_exe = current_exe.replace(".exe", "_new.exe")
+                shutil.copy2(REMOTE_TXT_EXE, temp_exe)
+                
+                # 3. 呼叫 Windows 終端機 (cmd) 進行背景偷天換日
+                # 指令邏輯：等 1.5 秒 -> 強制覆蓋舊 .exe -> 重新啟動新 .exe
+                cmd_command = f'timeout /t 2 /nobreak >nul && move /y "{temp_exe}" "{current_exe}" && start "" "{current_exe}"'
+                
+                # 執行指令（使用 subprocess.Popen 讓它在背景跑，不跳出黑框）
+                subprocess.Popen(cmd_command, shell=True)
+                
+                # 4. 立即結束目前的 Python 程式，讓 cmd 能夠順利覆蓋檔案！
+                sys.exit(0)
+                
+    except Exception as e:
+        # 更新失敗時不阻礙使用者，直接讓他們繼續用舊版
+        print(f"自動更新失敗: {e}")
+
+# ⚠️ 程式剛啟動，第一時間先檢查更新！
+check_for_updates()
 # ==========================================
 # 1. 路徑鎖定
 # ==========================================
