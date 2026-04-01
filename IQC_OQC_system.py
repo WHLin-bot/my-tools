@@ -22,18 +22,19 @@ def check_for_updates():
     if not current_exe.endswith(".exe"):
         return
         
-    # --- A 區：新程式剛開機時的自潔與交接 ---
+    # --- 只要我是分身，進到這行「立刻」進入自毀覆蓋，絕對不往下執行 UI 介面 ---
     if "_new.exe" in current_exe:
         original_exe = current_exe.replace("_new.exe", ".exe")
         try:
-            # 等 2 秒，確保舊本尊完全死透，再覆蓋並開啟新本尊
+            # 等 2 秒，確保舊的本尊已經因為 sys.exit(0) 完全死透
             cmd_self_destruct = f'timeout /t 2 /nobreak >nul && move /y "{current_exe}" "{original_exe}" && start "" "{original_exe}"'
             subprocess.Popen(cmd_self_destruct, shell=True)
-            sys.exit(0) 
+            
+            # 強制終止！不讓 Python 有機會去解壓、去載入 UI 視窗
+            os._exit(0) 
         except:
             pass
         
-    # --- B 區：正常的版本偵測與更新提示 ---
     try:
         if not os.path.exists(VERSION_FILE_PATH):
             return
@@ -41,11 +42,8 @@ def check_for_updates():
         with open(VERSION_FILE_PATH, "r", encoding="utf-8") as f:
             server_version = f.read().strip()
         
-        # 如果版本不符
         if server_version != CURRENT_VERSION:
-            
             if getattr(sys, 'frozen', False):
-                # 跳出通知
                 messagebox.showinfo(
                     "系統更新提示", 
                     f"偵測到新版本【v{server_version}】！\n目前版本為【v{CURRENT_VERSION}】。\n\n系統將自動進行背景更新，並重新啟動程式，請稍候..."
@@ -54,13 +52,10 @@ def check_for_updates():
                 temp_exe = current_exe.replace(".exe", "_new.exe")
                 shutil.copy2(REMOTE_TXT_EXE, temp_exe)
                 
-                # 【關鍵修改】: 加上 creationflags=0x08000000 (CREATE_NO_WINDOW)
-                # 這樣啟動分身 (_new.exe) 時，它只會在背景跑，絕對不會跳出第一個干擾視窗
-                subprocess.Popen([temp_exe], creationflags=0x08000000)
-                sys.exit(0)
-                
-            else:
-                print(f"開發環境中偵測到新版本 v{server_version}，略過自動更新。")
+                # 啟動分身
+                subprocess.Popen([temp_exe])
+                # 改用 os._exit(0) 強制、乾淨地殺死舊本尊
+                os._exit(0)
                 
     except Exception as e:
         print(f"自動更新程式發生異常: {e}")
