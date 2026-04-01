@@ -22,13 +22,10 @@ def check_for_updates():
     if not current_exe.endswith(".exe"):
         return
         
-    # --- 關鍵修正：【防 DLL 崩潰】分身機制 ---
-    # 如果這個檔案是因為更新而產生的「分身」(_new.exe)，它啟動的第一秒
-    # 會在背景發出指令把本尊蓋掉，並重新呼叫本尊開機，然後自己自毀。
+    # --- 【分身自毀與交接】維持不變，防 DLL Load 失敗 ---
     if "_new.exe" in current_exe:
         original_exe = current_exe.replace("_new.exe", ".exe")
         try:
-            # 流程：等 1 秒 -> 把自己覆蓋回原本的主程式名 -> 啟動主程式 -> 刪除這個 _new 檔案
             cmd_self_destruct = f'timeout /t 1 /nobreak >nul && move /y "{current_exe}" "{original_exe}" && start "" "{original_exe}"'
             subprocess.Popen(cmd_self_destruct, shell=True)
             sys.exit(0) 
@@ -40,31 +37,31 @@ def check_for_updates():
             with open(VERSION_FILE_PATH, "r", encoding="utf-8") as f:
                 server_version = f.read().strip()
             
+            # 偵測到新版本！
             if server_version != CURRENT_VERSION:
+                # 彈出提示視窗，告知使用者即將更新
+                messagebox.showinfo(
+                    "系統更新提示", 
+                    f"偵測到新版本【v{server_version}】！\n\n系統將自動進行背景更新，並重新啟動程式，請稍候..."
+                )
+                
                 temp_exe = current_exe.replace(".exe", "_new.exe")
-                # 1. 默默把網路上的 txt 下載下來
                 shutil.copy2(REMOTE_TXT_EXE, temp_exe)
                 
-                # 2. 直接「執行」下載好的 _new.exe，並立刻結束目前的程式！
-                # 這樣舊程式在關機前完全沒有被修改/改名，就絕對不會發生 DLL Load 失敗的問題。
                 subprocess.Popen([temp_exe])
                 sys.exit(0)
     except Exception as e:
         print(f"自動更新失敗: {e}")
 
-# 執行更新檢查
-check_for_updates()
-
 
 # ==========================================
-# 1. 路徑鎖定 (接下來接您原本的程式...)
+# 1. 路徑鎖定 (後面接您原本的核心邏輯)
 # ==========================================
 DB_PATH = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區"
 HIST_DIR = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\IOQC_folder_history"
 HIST_FILE = os.path.join(HIST_DIR, "IOQC_folder_history.txt")
 DONE_FILE = os.path.join(HIST_DIR, "IOQC_folder_history_done.txt")
 
-# 確保紀錄檔的目錄存在
 os.makedirs(HIST_DIR, exist_ok=True)
 
 # ----------------- 功能邏輯 -----------------
@@ -406,8 +403,12 @@ for t in [tree, tree_done]:
     t.bind("<ButtonRelease-1>", open_selected)
 
 path_info = tk.Label(root, text=f"📍 資料夾根路徑: {DB_PATH}", fg="gray", font=("微軟正黑體", 10))
-path_info.pack(side="bottom", anchor="w", padx=20, pady=5)
+# path_info.pack(side="bottom", anchor="w", padx=20, pady=5) # 這是您原本最後幾行
 
 refresh_search()
 refresh_done_tab()
+
+# 讓程式在顯示視窗後，100 毫秒(0.1秒)立刻悄悄執行版本檢查
+root.after(100, check_for_updates)
+
 root.mainloop()
