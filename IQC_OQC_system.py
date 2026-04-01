@@ -22,6 +22,19 @@ def check_for_updates():
     if not current_exe.endswith(".exe"):
         return
         
+    # --- 關鍵修正：【防 DLL 崩潰】分身機制 ---
+    # 如果這個檔案是因為更新而產生的「分身」(_new.exe)，它啟動的第一秒
+    # 會在背景發出指令把本尊蓋掉，並重新呼叫本尊開機，然後自己自毀。
+    if "_new.exe" in current_exe:
+        original_exe = current_exe.replace("_new.exe", ".exe")
+        try:
+            # 流程：等 1 秒 -> 把自己覆蓋回原本的主程式名 -> 啟動主程式 -> 刪除這個 _new 檔案
+            cmd_self_destruct = f'timeout /t 1 /nobreak >nul && move /y "{current_exe}" "{original_exe}" && start "" "{original_exe}"'
+            subprocess.Popen(cmd_self_destruct, shell=True)
+            sys.exit(0) 
+        except:
+            pass
+        
     try:
         if os.path.exists(VERSION_FILE_PATH):
             with open(VERSION_FILE_PATH, "r", encoding="utf-8") as f:
@@ -29,17 +42,19 @@ def check_for_updates():
             
             if server_version != CURRENT_VERSION:
                 temp_exe = current_exe.replace(".exe", "_new.exe")
+                # 1. 默默把網路上的 txt 下載下來
                 shutil.copy2(REMOTE_TXT_EXE, temp_exe)
                 
-                # 維持 3~5 秒的等待緩衝
-                cmd_command = f'timeout /t 3 /nobreak >nul && move /y "{temp_exe}" "{current_exe}" && timeout /t 2 /nobreak >nul && start "" "{current_exe}"'
-                subprocess.Popen(cmd_command, shell=True)
+                # 2. 直接「執行」下載好的 _new.exe，並立刻結束目前的程式！
+                # 這樣舊程式在關機前完全沒有被修改/改名，就絕對不會發生 DLL Load 失敗的問題。
+                subprocess.Popen([temp_exe])
                 sys.exit(0)
     except Exception as e:
         print(f"自動更新失敗: {e}")
 
 # 執行更新檢查
 check_for_updates()
+
 
 # ==========================================
 # 1. 路徑鎖定 (接下來接您原本的程式...)
