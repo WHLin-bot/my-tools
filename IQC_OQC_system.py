@@ -32,14 +32,14 @@ def check_for_updates():
                 temp_exe = current_exe.replace(".exe", "_new.exe")
                 shutil.copy2(REMOTE_TXT_EXE, temp_exe)
                 
-                # 3. 呼叫 Windows 終端機 (cmd) 進行背景偷天換日
-                # 指令邏輯：等 2 秒 -> 強制覆蓋舊 .exe -> 重新啟動新 .exe
-                cmd_command = f'timeout /t 2 /nobreak >nul && move /y "{temp_exe}" "{current_exe}" && start "" "{current_exe}"'
+                # 3. 呼叫 Windows 終端機 (cmd) 
+                # 邏輯：等 3 秒 -> 強制覆蓋舊 .exe -> 再等 2 秒(確保檔案寫入完整) -> 啟動新程式
+                cmd_command = f'timeout /t 3 /nobreak >nul && move /y "{temp_exe}" "{current_exe}" && timeout /t 2 /nobreak >nul && start "" "{current_exe}"'
                 
-                # 執行指令（使用 subprocess.Popen 讓它在背景跑，不跳出黑框）
+                # 執行指令（使用 subprocess.Popen 讓它在背景跑）
                 subprocess.Popen(cmd_command, shell=True)
                 
-                # 4. 立即結束目前的 Python 程式，讓 cmd 能夠順利覆蓋檔案！
+                # 4. 立即結束目前的 Python 程式
                 sys.exit(0)
                 
     except Exception as e:
