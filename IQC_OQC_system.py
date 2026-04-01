@@ -8,12 +8,13 @@ import os
 # ==========================================
 CURRENT_VERSION = "4.3.2"  # <<< 每次更新功能，就手動改這個數字
 
-# 網路硬碟路徑設定
-VERSION_FILE_PATH = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\System_Release\IQC_OQC_system_version.txt"
-REMOTE_TXT_EXE = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\System_Release\IQC_OQC_system.txt"
+# 網路硬碟路徑（依據您的需求，全部集中在 IOQC_folder_history 底下）
+UPDATE_DIR = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\IOQC_folder_history"
+VERSION_FILE_PATH = os.path.join(UPDATE_DIR, "version.txt")
+REMOTE_TXT_EXE = os.path.join(UPDATE_DIR, "IQC_OQC_system.txt")
 
 def check_for_updates():
-    # 防呆：如果是在 Python 原始碼環境 (如 VS Code) 執行，不觸發更新，避免開發時檔案被蓋掉
+    # 防呆：如果是在 Python 開發環境 (如 VS Code) 執行，不觸發更新，避免開發時檔案被蓋掉
     current_exe = sys.executable 
     if not current_exe.endswith(".exe"):
         return
@@ -25,7 +26,6 @@ def check_for_updates():
                 server_version = f.read().strip()
             
             # 2. 比對版本號（只要遠端字串不等於目前版本，就視為需要更新）
-            # (如果想更嚴謹，可以將字串拆開比對數字大小：list(map(int, server_version.split('.'))))
             if server_version != CURRENT_VERSION:
                 
                 # 複製網路上的 .txt 到本地，先命名為 _new.exe
@@ -33,7 +33,7 @@ def check_for_updates():
                 shutil.copy2(REMOTE_TXT_EXE, temp_exe)
                 
                 # 3. 呼叫 Windows 終端機 (cmd) 進行背景偷天換日
-                # 指令邏輯：等 1.5 秒 -> 強制覆蓋舊 .exe -> 重新啟動新 .exe
+                # 指令邏輯：等 2 秒 -> 強制覆蓋舊 .exe -> 重新啟動新 .exe
                 cmd_command = f'timeout /t 2 /nobreak >nul && move /y "{temp_exe}" "{current_exe}" && start "" "{current_exe}"'
                 
                 # 執行指令（使用 subprocess.Popen 讓它在背景跑，不跳出黑框）
