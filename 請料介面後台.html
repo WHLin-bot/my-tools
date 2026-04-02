@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>管理後台 - 批次管理模式</title>
+    <style>
+        :root { --primary: #0078d4; --bg: #f0f2f5; --success: #107c10; }
+        body { font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; background: var(--bg); padding: 20px; }
+        .container { max-width: 1450px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        
+        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .btn-save-all { background: var(--success); color: white; border: none; padding: 12px 25px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-save-all:hover { transform: translateY(-2px); opacity: 0.9; }
+
+        .filter-section { background: #faf9f8; padding: 15px; border-radius: 5px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 15px; border: 1px solid #edebe9; }
+        .filter-item { display: flex; flex-direction: column; gap: 4px; }
+        .filter-item label { font-size: 12px; font-weight: bold; color: var(--primary); }
+        .filter-item input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; width: 140px; }
+
+        .status-filter-group { display: flex; background: #eee; padding: 2px; border-radius: 6px; }
+        .status-btn { border: none; padding: 6px 12px; cursor: pointer; border-radius: 4px; font-size: 13px; background: transparent; color: #666; }
+        .status-btn.active { background: #fff; color: var(--primary); font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+        table { width: 100%; border-collapse: collapse; background: white; table-layout: fixed; }
+        th { background: #f3f2f1; border: 1px solid #ddd; padding: 10px; font-size: 13px; position: sticky; top: 0; z-index: 10; }
+        td { border: 1px solid #ddd; padding: 8px; font-size: 13px; word-wrap: break-word; }
+        .status-done { background: #dff6dd !important; }
+        .input-edit { width: 92%; padding: 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px; }
+        tr:hover { background: #f9f9f9; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header-bar">
+        <h2>📋 管理師控制台 - 批次存檔模式</h2>
+        <button class="btn-save-all" onclick="saveAllChanges()">💾 儲存所有變更</button>
+    </div>
+
+    <div class="filter-section">
+        <div class="filter-item"><label>日期篩選</label><input type="text" id="f-date" oninput="applyFilters()"></div>
+        <div class="filter-item"><label>請料人員</label><input type="text" id="f-user" oninput="applyFilters()"></div>
+        <div class="filter-item"><label>板名</label><input type="text" id="f-board" oninput="applyFilters()"></div>
+        <div class="filter-item"><label>料號</label><input type="text" id="f-pno" oninput="applyFilters()"></div>
+        <div class="filter-item">
+            <label>送達狀態</label>
+            <div class="status-filter-group">
+                <button class="status-btn active" onclick="setStatusFilter('全部', this)">全部</button>
+                <button class="status-btn" onclick="setStatusFilter('未送達', this)">⏳ 待處理</button>
+                <button class="status-btn" onclick="setStatusFilter('已送達', this)">✅ 已完成</button>
+            </div>
+        </div>
+    </div>
+
+    <table id="adminTable">
+        <thead>
+            <tr>
+                <th style="width: 140px;">日期時間</th>
+                <th style="width: 80px;">人員</th>
+                <th style="width: 150px;">板名</th>
+                <th style="width: 150px;">料號</th>
+                <th>品名</th>
+                <th style="width: 45px;">數量</th>
+                <th style="width: 90px;">送達狀態</th>
+                <th style="width: 120px;">請購單號</th>
+                <th>管理師備註</th>
+            </tr>
+        </thead>
+        <tbody id="adminBody"></tbody>
+    </table>
+</div>
+
+<script>
+    let allRecords = []; 
+    let currentStatusFilter = '全部';
+
+    function loadData() {
+        fetch('/get-records').then(res => res.json()).then(data => {
+            allRecords = data;
+            applyFilters();
+        });
+    }
+
+    function setStatusFilter(status, btn) {
+        currentStatusFilter = status;
+        document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        applyFilters();
+    }
+
+    function renderTable(filteredData) {
+        const body = document.getElementById('adminBody');
+        body.innerHTML = '';
+        
+        filteredData.forEach(item => {
+            const tr = document.createElement('tr');
+            const isDone = item.status === '已送達';
+            if(isDone) tr.classList.add('status-done');
+
+            // 關鍵：給予每個輸入框一組能連結回原始資料的屬性
+            tr.innerHTML = `
+                <td>${item.time}</td>
+                <td>${item.user}</td>
+                <td>${item.board}</td>
+                <td><b>${item.partNo}</b></td>
+                <td>${item.partName}</td>
+                <td style="text-align:center;">${item.quantity}</td>
+                <td style="text-align:center;">
+                    <input type="checkbox" ${isDone ? 'checked' : ''} 
+                        onchange="syncChange('${item.time}', '${item.partNo}', 'status', this.checked)"> 已送達
+                </td>
+                <td>
+                    <input type="text" class="input-edit" value="${item.poNumber || ''}" 
+                        oninput="syncChange('${item.time}', '${item.partNo}', 'poNumber', this.value)">
+                </td>
+                <td>
+                    <input type="text" class="input-edit" value="${item.remark || ''}" 
+                        oninput="syncChange('${item.time}', '${item.partNo}', 'remark', this.value)">
+                </td>
+            `;
+            body.appendChild(tr);
+        });
+    }
+
+    // 當管理師在網頁修改任何東西，即時同步回 JS 陣列中
+    function syncChange(time, partNo, field, value) {
+        const index = allRecords.findIndex(r => r.time === time && r.partNo === partNo);
+        if (index !== -1) {
+            if (field === 'status') {
+                allRecords[index].status = value ? '已送達' : '未送達';
+                applyFilters(); // 勾選後即時刷新顏色與過濾
+            } else {
+                allRecords[index][field] = value;
+            }
+        }
+    }
+
+    function applyFilters() {
+        const fDate = document.getElementById('f-date').value.toLowerCase();
+        const fUser = document.getElementById('f-user').value.toLowerCase();
+        const fBoard = document.getElementById('f-board').value.toLowerCase();
+        const fPno = document.getElementById('f-pno').value.toLowerCase();
+
+        const filtered = allRecords.filter(item => {
+            const itemStatus = item.status || '未送達';
+            const matchStatus = (currentStatusFilter === '全部') || (itemStatus === currentStatusFilter);
+            return matchStatus &&
+                   (item.time || "").toLowerCase().includes(fDate) &&
+                   (item.user || "").toLowerCase().includes(fUser) &&
+                   (item.board || "").toLowerCase().includes(fBoard) &&
+                   (item.partNo || "").toLowerCase().includes(fPno);
+        });
+        renderTable(filtered);
+    }
+
+    function saveAllChanges() {
+        if (!confirm('確定要儲存目前所有的變更嗎？')) return;
+
+        fetch('/batch-update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(allRecords)
+        })
+        .then(res => res.json())
+        .then(result => {
+            alert('✅ 成功儲存所有紀錄！');
+            loadData();
+        })
+        .catch(err => alert("⚠️ 儲存失敗，請檢查伺服器狀態"));
+    }
+
+    window.onload = loadData;
+</script>
+</body>
+</html>
