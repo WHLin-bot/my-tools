@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>快速請料系統</title>
+    <script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <style>
+        :root { --primary: #0078d4; --bg: #f0f2f5; --card-bg: #ffffff; --text: #323130; --border: #edebe9; }
+        body { font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 40px 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 30px; }
+        header h1 { color: var(--primary); font-size: 2rem; }
+        .main-card { background: var(--card-bg); border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-top: 5px solid var(--primary); }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+        .input-group { display: flex; flex-direction: column; }
+        .input-group label { font-weight: bold; margin-bottom: 8px; color: var(--primary); font-size: 14px; }
+        .header-input { padding: 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 16px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+        th { background-color: #faf9f8; border: 1px solid var(--border); padding: 12px; text-align: left; font-size: 14px; }
+        td { border: 1px solid var(--border); padding: 0; }
+        .table-input { width: 100%; padding: 12px; border: none; outline: none; box-sizing: border-box; font-size: 14px; background: transparent; }
+        .table-input:focus { background: #f3f9ff; }
+        .btn-group { margin-top: 25px; display: flex; gap: 15px; }
+        .btn { padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
+        .btn-primary { background: var(--primary); color: white; }
+        #copy-area { position: absolute; left: -9999px; top: 0; background-color: #ffffff; color: #000000; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header><h1>📦 快速請料系統</h1></header>
+    <div class="main-card">
+        <div class="info-grid">
+            <div class="input-group"><label>請料人員</label><input type="text" id="requester" class="header-input" placeholder="姓名"></div>
+            <div class="input-group"><label>完整板名 (F2)</label><input type="text" id="boardName" class="header-input" placeholder="AS-BOARD"></div>
+        </div>
+        <table>
+            <thead><tr><th style="width: 80px;">數量</th><th style="width: 200px;">料號</th><th>品名</th></tr></thead>
+            <tbody id="tableBody">
+                <tr>
+                    <td><input type="number" class="table-input qty" placeholder="1"></td>
+                    <td><input type="text" class="table-input pno" placeholder="料號"></td>
+                    <td><input type="text" class="table-input pname" placeholder="品名"></td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="btn-group">
+            <button class="btn btn-primary" onclick="generateAndSave()">產生並複製內容 & 同步紀錄</button>
+            <button class="btn" onclick="location.reload()">清空</button>
+        </div>
+    </div>
+</div>
+
+<div id="copy-area"></div>
+
+<script>
+    // 初始化與 Python 的通訊
+    let pyobj;
+    new QWebChannel(qt.webChannelTransport, function (channel) {
+        pyobj = channel.objects.pyobj;
+        console.log("Python 通訊已連線");
+    });
+
+    // 輔助函式：新增一列空白行
+    function addNewRow() {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td><input type="number" class="table-input qty" placeholder="1"></td><td><input type="text" class="table-input pno" placeholder="料號"></td><td><input type="text" class="table-input pname" placeholder="品名"></td>';
+        document.getElementById('tableBody').appendChild(tr);
+        return tr;
+    }
+
+    // 核心修正：貼上後自動補一列空白
+    document.getElementById('tableBody').addEventListener('paste', function (e) {
+        const pastedText = (e.clipboardData || window.clipboardData).getData('Text');
+        if (pastedText.includes('\n') || pastedText.includes('\t')) {
+            e.preventDefault();
+            const rowsData = pastedText.split(/\r\n|\n|\r/);
+            const activeInput = document.activeElement;
+            const startTd = activeInput.closest('td');
+            if (!startTd) return;
+            
+            const startIdx = Array.from(startTd.parentNode.children).indexOf(startTd);
+            let currentRow = startTd.parentNode;
+
+            rowsData.forEach(rowText => {
+                if (!rowText.trim()) return;
+                
+                if (!currentRow) {
+                    currentRow = addNewRow();
+                }
+
+                const cols = rowText.split('\t');
+                const inputs = currentRow.querySelectorAll('input');
+                cols.forEach((v, i) => {
+                    const targetInput = inputs[startIdx + i];
+                    if (targetInput) targetInput.value = v.trim();
+                });
+                currentRow = currentRow.nextElementSibling;
+            });
+
+            // 【關鍵修正】貼完後，如果最後一列不是空的，就補一個空白列
+            const lastRow = document.querySelector('#tableBody tr:last-child');
+            const hasVal = Array.from(lastRow.querySelectorAll('input')).some(i => i.value.trim() !== "");
+            if (hasVal) {
+                addNewRow();
+            }
+        }
+    });
+
+    async function generateAndSave() {
+        const req = document.getElementById('requester').value || "未填寫";
+        const f2Val = document.getElementById('boardName').value || "";
+        const today = new Date().toLocaleDateString('zh-TW', {year:'numeric', month:'2-digit', day:'2-digit'});
+        
+        let customer = "";
+        let strParts = f2Val.split("-");
+        if (f2Val.toUpperCase().startsWith("AS-")) {
+            customer = strParts.length > 1 ? strParts[1] : f2Val;
+        } else {
+            customer = strParts[0] || f2Val;
+        }
+
+        const baseSt = "font-family:'新細明體','PMingLiU',serif; font-size:12.0pt; color:#000000; background-color:#ffffff; border:none;";
+        const listSt = "font-family:'新細明體','PMingLiU',serif; font-size:12.0pt; color:#000000; background-color:#ffffff; border:1px solid #000000;";
+
+        let h = `<div style="background-color:#ffffff; color:#000000; padding:10px;"><p style="${baseSt}">請協助請料，感謝~。</p><br>`;
+        
+        // 第一部分：無框線表格
+        h += `<table width="650" border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse; width:650px; background-color:#ffffff; border:none;">`;
+        const headerInfo = [["(1)客戶", customer], ["(2)料號/品名", "如下表"], ["(3)實際數量/備用數量", "如下表"], ["(4)是否過保的判定...", "否"], ["(5)完整板名", f2Val], ["(6)需求日期", today], ["(7)是否急用", "是"], ["(8)無料是否請購?", "是(請告知交期，謝謝!!)"]];
+        headerInfo.forEach(item => {
+            h += `<tr><td width="350" style="${baseSt} width:350px; padding:2px 5px; font-weight:bold;">${item[0]}</td><td style="${baseSt} padding:2px 5px;">${item[1]}</td></tr>`;
+        });
+        h += `</table><br><br>`;
+
+        // 第二部分：詳細清單
+        h += `<table width="650" style="border-collapse:collapse; width:650px; border:1px solid #000000;"><tr style="background-color:#FFFF00; font-weight:bold;"><td width="80" style="${listSt} background-color:#FFFF00; text-align:center; padding:4px;">數量</td><td width="200" style="${listSt} background-color:#FFFF00; padding:4px;">料號</td><td width="370" style="${listSt} background-color:#FFFF00; padding:4px;">品名</td></tr>`;
+
+        const logRecords = [];
+        document.querySelectorAll('#tableBody tr').forEach(tr => {
+            const q = tr.querySelector('.qty').value || "";
+            const p = tr.querySelector('.pno').value || "";
+            const n = tr.querySelector('.pname').value || "";
+            if (p.trim() !== "" || n.trim() !== "") {
+                const finalQty = q.trim() === "" ? "1" : q;
+                h += `<tr><td style="${listSt} text-align:center; padding:4px;">${finalQty}</td><td style="${listSt} padding:4px;">${p}</td><td style="${listSt} padding:4px;">${n}</td></tr>`;
+                logRecords.push({ time: new Date().toLocaleString(), user: req, board: f2Val, partNo: p, partName: n, quantity: finalQty });
+            }
+        });
+        h += `</table></div>`;
+
+        // 執行複製到剪貼簿
+        const copyArea = document.getElementById('copy-area');
+        copyArea.innerHTML = h;
+        const range = document.createRange();
+        range.selectNode(copyArea);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        document.execCommand('copy');
+        window.getSelection().removeAllRanges();
+
+        // 【核心修改】將資料傳送給 Python 存檔
+        if (logRecords.length > 0 && pyobj) {
+            pyobj.save_request(JSON.stringify(logRecords), h);
+        } else if (!pyobj) {
+            alert("錯誤: 無法連接 Python 後端，紀錄未儲存。");
+        }
+    }
+</script>
+</body>
+</html>

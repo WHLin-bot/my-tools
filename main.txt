@@ -1,0 +1,72 @@
+import sys
+import json
+import os
+import win32com.client as win32 # 導入 Outlook 控制套件
+from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
+from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtWebChannel import QWebChannel
+from PySide6.QtCore import QObject, Slot, QUrl
+
+TARGET_DIR = r"C:\Users\POLO LIN\Desktop\code"
+TARGET_FILE = "material_requests.txt"
+
+class Bridge(QObject):
+    # 修改 Slot，現在接收兩個參數：json資料 與 html內容
+    @Slot(str, str)
+    def save_request(self, json_data, html_content):
+        try:
+            records = json.loads(json_data)
+            
+            # --- 1. 執行原本的存檔邏輯 ---
+            if not os.path.exists(TARGET_DIR):
+                os.makedirs(TARGET_DIR)
+            file_path = os.path.join(TARGET_DIR, TARGET_FILE)
+            with open(file_path, "a", encoding="utf-8") as f:
+                for row in records:
+                    line = f"[{row['time']}] 使用者:{row['user']} | 板名:{row['board']} | 料號:{row['partNo']} | 品名:{row['partName']} | 數量:{row['quantity']}\n"
+                    f.write(line)
+
+            # --- 2. 自動開啟 Outlook 並「貼上」內容 ---
+            try:
+                outlook = win32.Dispatch('outlook.application')
+                mail = outlook.CreateItem(0) # 0 代表郵件 Item
+                
+                # 設定郵件主旨 (抓取第一筆資料的板名作為標題)
+                board_name = records[0]['board'] if records else "新請料單"
+                mail.Subject = f"請料申請 - {board_name}"
+                
+                # 直接將網頁的 HTML 原始碼塞進郵件內文
+                # 這樣連背景顏色和框線都會完美保留
+                mail.HTMLBody = html_content
+                
+                # 顯示 Outlook 視窗
+                mail.Display()
+                
+            except Exception as e_outlook:
+                print(f"Outlook 啟動失敗: {e_outlook}")
+                QMessageBox.warning(None, "提示", "紀錄已存檔，但無法自動開啟 Outlook。請手動貼上。")
+
+        except Exception as e:
+            QMessageBox.critical(None, "系統錯誤", f"發生錯誤: {e}")
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("快速請料系統 - 自動 Outlook 版")
+        self.resize(1050, 850)
+        self.browser = QWebEngineView()
+        self.channel = QWebChannel()
+        self.bridge = Bridge()
+        self.channel.registerObject("pyobj", self.bridge)
+        self.browser.page().setWebChannel(self.channel)
+
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        html_path = os.path.join(current_dir, "index.html")
+        self.browser.load(QUrl.fromLocalFile(html_path))
+        self.setCentralWidget(self.browser)
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
