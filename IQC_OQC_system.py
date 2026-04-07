@@ -81,8 +81,13 @@ def auto_fill_data(event=None):
     try:
         conn = sqlite3.connect(SQLITE_DB); cursor = conn.cursor()
         cursor.execute("""
-            SELECT customer, model, cust_id FROM active_records WHERE sn = ? COLLATE NOCASE 
-            UNION SELECT customer, model, cust_id FROM done_records WHERE sn = ? COLLATE NOCASE LIMIT 1
+            SELECT customer, model, cust_id FROM (
+                SELECT customer, model, cust_id, time FROM active_records WHERE sn = ? COLLATE NOCASE
+                UNION ALL
+                SELECT customer, model, cust_id, time FROM done_records WHERE sn = ? COLLATE NOCASE
+            ) AS all_records
+            ORDER BY time DESC
+            LIMIT 1
         """, (sn, sn))
         res = cursor.fetchone(); conn.close()
         if res:
@@ -256,7 +261,7 @@ tk.Button(f_t1, text="🔄 刷新列表", command=refresh_search, font=("微軟�
 tk.Button(f_t1, text="📦 產生紙本表單專用CSV", command=archive_to_csv, bg="#27AE60", fg="white", font=("微軟正黑體", 11, "bold")).pack(side="right", padx=10)
 
 tree_frame1 = tk.Frame(tab1); tree_frame1.pack(fill="both", expand=True)
-cols1 = ("時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "狀態", "IQC", "OQC", "Path", "ID")
+cols1 = ("建立時間", "客戶名稱", "客戶編號", "產品型號", "SN編號", "作業人員", "狀態", "IQC", "OQC", "Path", "ID")
 tree = ttk.Treeview(tree_frame1, columns=cols1, show="headings")
 vsb1 = ttk.Scrollbar(tree_frame1, orient="vertical", command=tree.yview)
 tree.configure(yscrollcommand=vsb1.set); vsb1.pack(side="right", fill="y"); tree.pack(side="left", fill="both", expand=True)
@@ -275,7 +280,7 @@ entry_done_search.bind("<KeyRelease>", refresh_done_tab)
 tk.Button(f_t2, text="🔄 刷新歷史", command=refresh_done_tab, font=("微軟正黑體", 11)).pack(side="left", padx=5)
 
 tree_frame2 = tk.Frame(tab2); tree_frame2.pack(fill="both", expand=True)
-cols2 = ("時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "出貨日期", "狀態", "IQC", "OQC", "Path")
+cols2 = ("建立時間", "客戶名稱", "客戶編號", "產品型號", "SN編號", "作業人員", "出貨日期", "狀態", "IQC", "OQC", "Path")
 tree_done = ttk.Treeview(tree_frame2, columns=cols2, show="headings")
 vsb2 = ttk.Scrollbar(tree_frame2, orient="vertical", command=tree_done.yview)
 tree_done.configure(yscrollcommand=vsb2.set); vsb2.pack(side="right", fill="y"); tree_done.pack(side="left", fill="both", expand=True)
