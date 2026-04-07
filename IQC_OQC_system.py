@@ -1,46 +1,58 @@
 import os
-import json
-import csv
-import tkinter as tk  
-from tkinter import messagebox, ttk, filedialog
-from datetime import datetime
 import sys
 import shutil
-import subprocess
-import sqlite3  # 引入 SQLite
+from tkinter import messagebox
 
 # ==========================================
-# 0. 版本號與自動更新設定
+# 0. 版本號與手動更新引導 (退而求其次方案)
 # ==========================================
 CURRENT_VERSION = "4.4.0" 
 
-UPDATE_DIR = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\IOQC_folder_history"
+# 伺服器路徑設定
+UPDATE_DIR = r"\\fs2\Dept(Q)\08_p03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\IOQC_folder_history"
 VERSION_FILE_PATH = os.path.join(UPDATE_DIR, "version.txt")
-REMOTE_TXT_EXE = os.path.join(UPDATE_DIR, "IQC_OQC_system.txt")
+REMOTE_ZIP_PATH = os.path.join(UPDATE_DIR, "IQC_OQC_system.zip")
 
 def check_for_updates():
-    current_exe = sys.executable 
-    if not current_exe.endswith(".exe"):
-        return
-    if "_new.exe" in current_exe:
-        original_exe = current_exe.replace("_new.exe", ".exe")
-        try:
-            cmd_self_destruct = f'timeout /t 2 /nobreak >nul && move /y "{current_exe}" "{original_exe}" && start "" "{original_exe}"'
-            subprocess.Popen(cmd_self_destruct, shell=True)
-            os._exit(0) 
-        except: pass
+    """偵測更新並將最新壓縮檔下載到桌面"""
+    if not getattr(sys, 'frozen', False):
+        return  # 如果是在編輯器執行就不跑更新邏輯
+
     try:
-        if not os.path.exists(VERSION_FILE_PATH): return
+        if not os.path.exists(VERSION_FILE_PATH):
+            return
+            
         with open(VERSION_FILE_PATH, "r", encoding="utf-8") as f:
             server_version = f.read().strip()
+            
         if server_version != CURRENT_VERSION:
-            if getattr(sys, 'frozen', False):
-                messagebox.showinfo("系統更新", f"偵測到新版本 v{server_version}，將自動更新並重啟。")
-                temp_exe = current_exe.replace(".exe", "_new.exe")
-                shutil.copy2(REMOTE_TXT_EXE, temp_exe)
-                subprocess.Popen([temp_exe])
-                os._exit(0)
-    except Exception as e: print(f"更新異常: {e}")
+            msg = (
+                f"偵測到新版本 v{server_version}！\n\n"
+                "【更新步驟說明】\n"
+                "1. 點擊「是」後，系統會將最新版壓縮檔下載到您的『桌面』。\n"
+                "2. 程式將會自動關閉。\n"
+                "3. 請您刪除舊的資料夾，並將桌面上的新壓縮檔解壓縮即可。\n\n"
+                "是否現在下載新版本並關閉程式？"
+            )
+            ans = messagebox.askyesno("系統更新提示", msg)
+            
+            if ans:
+                # 取得使用者桌面路徑
+                desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+                local_zip_name = f"IQC_OQC_system_v{server_version}.zip"
+                target_zip_path = os.path.join(desktop_path, local_zip_name)
+                
+                # 從伺服器複製到桌面
+                if os.path.exists(REMOTE_ZIP_PATH):
+                    shutil.copy2(REMOTE_ZIP_PATH, target_zip_path)
+                    messagebox.showinfo("下載完成", f"最新版已下載至桌面：\n{local_zip_name}\n\n程式即將關閉，請手動更新。")
+                    os._exit(0) # 關閉程式
+                else:
+                    messagebox.showerror("錯誤", "伺服器上找不到壓縮檔，請聯絡系統管理員。")
+                    
+    except Exception as e:
+        # 更新失敗不要卡住主程式開啟
+        print(f"檢查更新時發生錯誤: {e}")
 
 # ==========================================
 # 1. 路徑與資料庫設定
@@ -352,6 +364,9 @@ for t in [tree, tree_done]:
 footer_frame = tk.Frame(root, bg="#F0F0F0", height=30); footer_frame.pack(side="bottom", fill="x")
 lbl_db_path = tk.Label(footer_frame, text=f"💡 資料來源：{SQLITE_DB}", fg="#555555", font=("微軟正黑體", 10), bg="#F0F0F0", padx=20)
 lbl_db_path.pack(side="left")
+
+# 呼叫更新檢查
+root.after(100, check_for_updates) # 延遲 0.1 秒執行，確保主視窗已經跑出來
 
 refresh_search(); refresh_done_tab()
 root.after(100, check_for_updates)
