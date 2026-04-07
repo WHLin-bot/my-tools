@@ -8,18 +8,15 @@ import tkinter as tk
 from tkinter import messagebox, ttk, filedialog
 
 # ==========================================
-# 0. 版本號與自動更新邏輯
+# 0. 版本號與自動更新邏輯 (維持不動)
 # ==========================================
 CURRENT_VERSION = "4.4.3" 
-
-# 更新檔存放目錄 (請確保與資料庫路徑一致)
 UPDATE_DIR = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\IOQC_folder_history"
 VERSION_FILE_PATH = os.path.join(UPDATE_DIR, "version.txt")
 REMOTE_ZIP_PATH = os.path.join(UPDATE_DIR, "IQC_OQC_system.zip")
 
 def check_for_updates():
-    """檢查伺服器上的版本號"""
-    if not getattr(sys, 'frozen', False): return # 開發模式下不檢查
+    if not getattr(sys, 'frozen', False): return
     try:
         if not os.path.exists(VERSION_FILE_PATH): return
         with open(VERSION_FILE_PATH, "r", encoding="utf-8") as f:
@@ -36,7 +33,7 @@ def check_for_updates():
     except: pass
 
 # ==========================================
-# 1. 路徑與資料庫設定
+# 1. 路徑與資料庫設定 (維持不動)
 # ==========================================
 DB_PATH = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區"
 HIST_DIR = UPDATE_DIR
@@ -59,7 +56,7 @@ def init_db():
 init_db()
 
 # ==========================================
-# 2. 核心功能邏輯 (路徑：客戶/型號/SN)
+# 2. 核心功能邏輯 (維持不動)
 # ==========================================
 
 def get_oqc_ship_date(sn_path):
@@ -99,18 +96,14 @@ def create_folders():
     if not all([customer, model, sn, cust_id, staff]):
         messagebox.showwarning("提示", "請填寫所有欄位！")
         return
-    
-    # 最終路徑邏輯：根目錄 / 客戶 / 型號 / SN
     sn_path = os.path.join(DB_PATH, customer, model, sn)
     today = datetime.now().strftime('%Y%m%d')
     iqc_path = os.path.join(sn_path, f"{today}_IQC")
     oqc_path = os.path.join(sn_path, f"{today}_OQC")
-    
     try:
         os.makedirs(iqc_path, exist_ok=True)
         os.makedirs(oqc_path, exist_ok=True)
-        conn = sqlite3.connect(SQLITE_DB)
-        cursor = conn.cursor()
+        conn = sqlite3.connect(SQLITE_DB); cursor = conn.cursor()
         cursor.execute("INSERT INTO active_records (time, customer, cust_id, model, sn, staff, status, path) VALUES (?,?,?,?,?,?,?,?)",
             (datetime.now().strftime('%Y-%m-%d %H:%M'), customer, cust_id, model, sn, staff, "進行中", sn_path))
         conn.commit(); conn.close()
@@ -184,7 +177,7 @@ def open_selected(event):
         if os.path.exists(p): os.startfile(p)
 
 # ==========================================
-# 3. UI 介面佈局 (定義 root 在這)
+# 3. UI 介面佈局 (修正點：字體、按鈕功能、名稱)
 # ==========================================
 root = tk.Tk()
 root.title(f"IQC/OQC 管理系統 v{CURRENT_VERSION}")
@@ -201,10 +194,11 @@ style.configure("Treeview", font=FONT_MAIN, rowheight=35)
 frame_input = tk.LabelFrame(root, text=" 建立IQC資訊 ", font=FONT_BOLD, padx=15, pady=15)
 frame_input.pack(fill="x", padx=20, pady=10)
 
-labels = ["客戶名稱:", "產品型號:", "SN 編號:", "客戶編號:", "作業人員:"]
+# (修正 2) 確保 Label 字體維持 FONT_MAIN
+labels_text = ["客戶名稱:", "產品型號:", "SN 編號:", "客戶編號:", "作業人員:"]
 entries = []
-for i, text in enumerate(labels):
-    tk.Label(frame_input, text=text).grid(row=i//3, column=(i%3)*2, sticky="w", padx=5)
+for i, text in enumerate(labels_text):
+    tk.Label(frame_input, text=text, font=FONT_MAIN).grid(row=i//3, column=(i%3)*2, sticky="w", padx=5)
     e = tk.Entry(frame_input, width=18, font=FONT_MAIN)
     e.grid(row=i//3, column=(i%3)*2+1, padx=5, pady=5)
     entries.append(e)
@@ -217,11 +211,17 @@ notebook = ttk.Notebook(root); notebook.pack(fill="both", expand=True, padx=20, 
 tab1 = tk.Frame(notebook); tab2 = tk.Frame(notebook)
 notebook.add(tab1, text=" 進行中資料 "); notebook.add(tab2, text=" 已歸檔歷史 ")
 
-# 進行中 Tab
+# --- 進行中 Tab ---
 f_search = tk.Frame(tab1); f_search.pack(fill="x", pady=5)
-entry_search = tk.Entry(f_search, font=FONT_MAIN); entry_search.pack(side="left", fill="x", expand=True, padx=10)
+tk.Label(f_search, text="🔍 搜尋:", font=FONT_MAIN).pack(side="left", padx=5)
+entry_search = tk.Entry(f_search, font=FONT_MAIN); entry_search.pack(side="left", fill="x", expand=True, padx=5)
 entry_search.bind("<KeyRelease>", refresh_search)
-tk.Button(f_search, text="📦 歸檔", command=archive_done_records, bg="#27AE60", fg="white").pack(side="right", padx=10)
+
+# (修正 1) 補回刷新按鈕
+tk.Button(f_search, text="🔄 刷新狀態", command=refresh_search, bg="#E67E22", fg="white", font=FONT_BOLD).pack(side="left", padx=5)
+
+# (修正 3) 修改按鈕名稱
+tk.Button(f_search, text="📦 產生紙本報表前CSV檔案", command=archive_done_records, bg="#27AE60", fg="white", font=FONT_BOLD).pack(side="right", padx=10)
 
 cols1 = ("時間", "客戶", "客戶編號", "型號", "SN", "作業員", "狀態", "IQC", "OQC", "Path", "ID")
 tree = ttk.Treeview(tab1, columns=cols1, show="headings")
@@ -229,8 +229,9 @@ for c in cols1: tree.heading(c, text=c); tree.column(c, width=100, anchor="cente
 tree.column("Path", width=0, stretch=False); tree.column("ID", width=0, stretch=False)
 tree.pack(fill="both", expand=True)
 
-# 已歸檔 Tab
+# --- 已歸檔 Tab ---
 f_done = tk.Frame(tab2); f_done.pack(fill="x", pady=5)
+tk.Label(f_done, text="🔍 搜尋歷史:", font=FONT_MAIN).pack(side="left", padx=5)
 entry_done_search = tk.Entry(f_done, font=FONT_MAIN); entry_done_search.pack(fill="x", padx=10)
 entry_done_search.bind("<KeyRelease>", refresh_done_tab)
 
@@ -240,13 +241,11 @@ for c in cols2: tree_done.heading(c, text=c); tree_done.column(c, width=100, anc
 tree_done.column("Path", width=0, stretch=False)
 tree_done.pack(fill="both", expand=True)
 
-# 顏色標記
 for t in [tree, tree_done]:
     t.tag_configure("green", background="#DFF2BF"); t.tag_configure("orange", background="#FEEFB3")
     t.tag_configure("red", background="#FFBABA"); t.tag_configure("gray", background="#F2F2F2")
     t.bind("<ButtonRelease-1>", open_selected)
 
-# 啟動檢查更新與主迴圈
 root.after(1000, check_for_updates)
 refresh_search(); refresh_done_tab()
 root.mainloop()
