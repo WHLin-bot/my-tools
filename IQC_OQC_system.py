@@ -1,17 +1,18 @@
 import os
 import json
 import csv
-import tkinter as tk  # <-- 確保這行在最前面，解決 NameError 問題！
+import tkinter as tk  
 from tkinter import messagebox, ttk, filedialog
 from datetime import datetime
 import sys
 import shutil
 import subprocess
+import sqlite3  # 引入 SQLite
 
 # ==========================================
 # 0. 版本號與自動更新設定
 # ==========================================
-CURRENT_VERSION = "4.3.2" 
+CURRENT_VERSION = "4.4.0" 
 
 UPDATE_DIR = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\IOQC_folder_history"
 VERSION_FILE_PATH = os.path.join(UPDATE_DIR, "version.txt")
@@ -21,169 +22,204 @@ def check_for_updates():
     current_exe = sys.executable 
     if not current_exe.endswith(".exe"):
         return
-        
-    # --- 只要我是分身，進到這行「立刻」進入自毀覆蓋，絕對不往下執行 UI 介面 ---
     if "_new.exe" in current_exe:
         original_exe = current_exe.replace("_new.exe", ".exe")
         try:
-            # 等 2 秒，確保舊的本尊已經因為 sys.exit(0) 完全死透
             cmd_self_destruct = f'timeout /t 2 /nobreak >nul && move /y "{current_exe}" "{original_exe}" && start "" "{original_exe}"'
             subprocess.Popen(cmd_self_destruct, shell=True)
-            
-            # 強制終止！不讓 Python 有機會去解壓、去載入 UI 視窗
             os._exit(0) 
-        except:
-            pass
-        
+        except: pass
     try:
-        if not os.path.exists(VERSION_FILE_PATH):
-            return
-            
+        if not os.path.exists(VERSION_FILE_PATH): return
         with open(VERSION_FILE_PATH, "r", encoding="utf-8") as f:
             server_version = f.read().strip()
-        
         if server_version != CURRENT_VERSION:
             if getattr(sys, 'frozen', False):
-                messagebox.showinfo(
-                    "系統更新提示", 
-                    f"偵測到新版本【v{server_version}】！\n目前版本為【v{CURRENT_VERSION}】。\n\n系統將自動進行背景更新，並重新啟動程式，請稍候..."
-                )
-                
+                messagebox.showinfo("系統更新", f"偵測到新版本 v{server_version}，將自動更新並重啟。")
                 temp_exe = current_exe.replace(".exe", "_new.exe")
                 shutil.copy2(REMOTE_TXT_EXE, temp_exe)
-                
-                # 啟動分身
                 subprocess.Popen([temp_exe])
-                # 改用 os._exit(0) 強制、乾淨地殺死舊本尊
                 os._exit(0)
-                
-    except Exception as e:
-        print(f"自動更新程式發生異常: {e}")
-
-
-
+    except Exception as e: print(f"更新異常: {e}")
 
 # ==========================================
-# 1. 路徑鎖定 (後面接您原本的核心邏輯)
+# 1. 路徑與資料庫設定
 # ==========================================
 DB_PATH = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區"
 HIST_DIR = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\IOQC_folder_history"
-HIST_FILE = os.path.join(HIST_DIR, "IOQC_folder_history.txt")
-DONE_FILE = os.path.join(HIST_DIR, "IOQC_folder_history_done.txt")
+SQLITE_DB = os.path.join(HIST_DIR, "ioqc_management.db")
 
 os.makedirs(HIST_DIR, exist_ok=True)
 
-# ----------------- 功能邏輯 -----------------
+def init_db():
+    """初始化 SQLite 資料庫與資料表 - 確保欄位完全對齊"""
+    conn = sqlite3.connect(SQLITE_DB)
+    cursor = conn.cursor()
+    # 進行中資料表 (active_records)
+    cursor.execute('''CREATE TABLE IF NOT EXISTS active_records 
+        (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+         time TEXT, customer TEXT, cust_id TEXT, model TEXT, 
+         sn TEXT, staff TEXT, status TEXT, 
+         iqc_done INTEGER DEFAULT 0, oqc_done INTEGER DEFAULT 0, 
+         path TEXT)''')
+    # 已歸檔資料表 (done_records)
+    cursor.execute('''CREATE TABLE IF NOT EXISTS done_records 
+        (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+         time TEXT, customer TEXT, cust_id TEXT, model TEXT, 
+         sn TEXT, staff TEXT, ship_date TEXT, path TEXT)''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# ==========================================
+# 2. 核心功能邏輯
+# ==========================================
 
 def get_oqc_ship_date(sn_path):
-    """從 OQC 資料夾中抓取最新照片/檔案的日期作為出貨日期"""
     try:
-        if not os.path.exists(sn_path): return ""
+        if not sn_path or not os.path.exists(sn_path): return "N/A"
         for folder in os.listdir(sn_path):
             if "OQC" in folder:
                 full_folder_path = os.path.join(sn_path, folder)
                 if os.path.isdir(full_folder_path):
-                    files = [os.path.join(full_folder_path, f) for f in os.listdir(full_folder_path) 
-                             if os.path.isfile(os.path.join(full_folder_path, f))]
+                    files = [os.path.join(full_folder_path, f) for f in os.listdir(full_folder_path) if os.path.isfile(os.path.join(full_folder_path, f))]
                     if files:
-                        latest_file = max(files, key=os.path.getmtime)
-                        mtime = os.path.getmtime(latest_file)
+                        mtime = os.path.getmtime(max(files, key=os.path.getmtime))
                         return datetime.fromtimestamp(mtime).strftime('%Y-%m-%d')
     except: pass
     return "N/A"
 
 def get_folder_status(sn_path, date_keyword):
-    """檢查路徑下是否有照片 (綁定特定日期)"""
-    if not os.path.exists(sn_path): return "路徑遺失", "red"
+    if not sn_path or not os.path.exists(sn_path): return "路徑遺失", "red"
     has_iqc, has_oqc = False, False
     try:
         for folder in os.listdir(sn_path):
-            # 必須同時符合「該日期」與「檢驗類型」
-            if date_keyword in folder:
-                full_path = os.path.join(sn_path, folder)
-                if os.path.isdir(full_path):
-                    has_files = any(os.path.isfile(os.path.join(full_path, f)) for f in os.listdir(full_path))
-                    if "IQC" in folder and has_files: has_iqc = True
-                    if "OQC" in folder and has_files: has_oqc = True
+            if date_keyword in folder and os.path.isdir(os.path.join(sn_path, folder)):
+                has_files = any(os.path.isfile(os.path.join(sn_path, folder, f)) for f in os.listdir(os.path.join(sn_path, folder)))
+                if "IQC" in folder and has_files: has_iqc = True
+                if "OQC" in folder and has_files: has_oqc = True
     except: pass
     if has_iqc and has_oqc: return "✅ 已完成", "green"
     if has_iqc or has_oqc: return "⚠️ 部分上傳", "orange"
     return "❌ 尚未放照片", "red"
 
-def load_records(file_path):
-    if not os.path.exists(file_path): return []
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except: return []
+def create_folders():
+    # 取得輸入框內容
+    customer = entry_customer.get().strip()
+    model = entry_model.get().strip()
+    sn = entry_sn.get().strip()
+    cust_id = entry_cust_id.get().strip()
+    staff = entry_staff.get().strip()
 
-def save_records(file_path, data):
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+    if not all([customer, model, sn, cust_id, staff]):
+        messagebox.showwarning("提示", "請填寫所有欄位！")
+        return
+    
+    # 建立路徑邏輯：伺服器根目錄 \ 客戶 \ ID \ SN
+    sn_path = os.path.join(DB_PATH, customer, cust_id, sn)
+    today = datetime.now().strftime('%Y%m%d')
+    iqc_path = os.path.join(sn_path, f"{today}_IQC")
+    oqc_path = os.path.join(sn_path, f"{today}_OQC")
+    
+    try:
+        os.makedirs(iqc_path, exist_ok=True)
+        os.makedirs(oqc_path, exist_ok=True)
+        
+        conn = sqlite3.connect(SQLITE_DB)
+        cursor = conn.cursor()
+        # 寫入資料庫，status 預設「進行中」，iqc/oqc_done 預設 0
+        cursor.execute("""INSERT INTO active_records 
+            (time, customer, cust_id, model, sn, staff, status, iqc_done, oqc_done, path) 
+            VALUES (?,?,?,?,?,?,?,0,0,?)""",
+            (datetime.now().strftime('%Y-%m-%d %H:%M'), customer, cust_id, model, sn, staff, "進行中", sn_path))
+        conn.commit()
+        conn.close()
+        
+        messagebox.showinfo("成功", f"資料夾已建立！\n路徑：{sn_path}")
+        if os.path.exists(iqc_path): os.startfile(iqc_path)
+        refresh_search()
+    except Exception as e: 
+        messagebox.showerror("錯誤", f"建立失敗：{e}")
+
+def refresh_search(event=None):
+    query = entry_search.get().strip().lower()
+    for item in tree.get_children(): tree.delete(item)
+    
+    conn = sqlite3.connect(SQLITE_DB)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM active_records ORDER BY id DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    for r in rows:
+        # r[10] 為 path
+        targets = [str(x).lower() for x in r[2:7]]
+        if any(query in t for t in targets):
+            date_keyword = r[1][:10].replace("-", "").replace("/", "")
+            sn_path = r[10] if r[10] else ""
+            status_text, color_tag = get_folder_status(sn_path, date_keyword)
+            # 插入 Treeview (注意索引對齊)
+            tree.insert("", "end", values=(r[1], r[2], r[3], r[4], r[5], r[6], status_text, "📂 開啟 IQC", "📂 開啟 OQC", sn_path, r[0]), tags=(color_tag,))
+
+def refresh_done_tab(event=None):
+    query = entry_done_search.get().strip().lower()
+    for item in tree_done.get_children(): tree_done.delete(item)
+    
+    conn = sqlite3.connect(SQLITE_DB)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM done_records ORDER BY id DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    for r in rows:
+        # r[8] 為 path
+        targets = [str(x).lower() for x in r[2:8]]
+        if any(query in t for t in targets):
+            sn_path = r[8] if r[8] else ""
+            tree_done.insert("", "end", values=(r[1], r[2], r[3], r[4], r[5], r[6], r[7], "✅ 已歸檔", "📂 開啟 IQC", "📂 開啟 OQC", sn_path), tags=("gray",))
 
 def archive_done_records():
-    """轉移已完成資料並產出 CSV (自定義欄位與出貨日期抓取)"""
-    records = load_records(HIST_FILE)
-    done_records = load_records(DONE_FILE)
-    new_active, to_archive = [], []
-
-    for r in records:
-        # 關鍵修正：從 'time' 中取出日期 (例如 "2026-04-01") 並轉為 "20260401"
-        create_time_str = r.get('time', '')
-        date_keyword = create_time_str[:10].replace("-", "")
-        
-        # 補上 date_keyword 參數，讓狀態檢查不會報錯
-        status, _ = get_folder_status(r['path'], date_keyword)
-        
-        if status == "✅ 已完成": to_archive.append(r)
-        else: new_active.append(r)
-
+    conn = sqlite3.connect(SQLITE_DB)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM active_records")
+    active_rows = cursor.fetchall()
+    
+    to_archive = []
+    for r in active_rows:
+        date_keyword = r[1][:10].replace("-", "").replace("/", "")
+        sn_path = r[10] if r[10] else ""
+        status, _ = get_folder_status(sn_path, date_keyword)
+        if status == "✅ 已完成":
+            to_archive.append(r)
+    
     if not to_archive:
-        messagebox.showinfo("提示", "目前沒有符合「已完成」狀態的資料可歸檔。")
+        messagebox.showinfo("提示", "沒有符合「已完成」狀態的資料。")
+        conn.close()
         return
 
-    csv_path = filedialog.asksaveasfilename(
-        defaultextension=".csv",
-        filetypes=[("CSV Files", "*.csv")],
-        title="選擇 CSV 儲存位置",
-        initialfile=f"IOQC_Archive_{datetime.now().strftime('%Y%m%d')}.csv"
-    )
-    
+    csv_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV Files", "*.csv")],
+                                            initialfile=f"IOQC_Archive_{datetime.now().strftime('%Y%m%d')}.csv")
     if csv_path:
         try:
             export_data = []
-            for item in to_archive:
-                clean_date = item.get('time', '').split(' ')[0]
-                ship_date = get_oqc_ship_date(item.get('path', ''))
-                item['ship_date'] = ship_date 
-                
-                export_data.append({
-                    "客戶名稱": item.get('customer', ''),
-                    "產品型號": item.get('model', ''),
-                    "SN編號": item.get('sn', ''),
-                    "客戶編號": item.get('cust_id', ''),
-                    "建立日期": clean_date,
-                    "作業人員": item.get('staff', ''),
-                    "出貨日期": ship_date
-                })
+            for r in to_archive:
+                sn_path = r[10] if r[10] else ""
+                ship_date = get_oqc_ship_date(sn_path)
+                cursor.execute("INSERT INTO done_records (time, customer, cust_id, model, sn, staff, ship_date, path) VALUES (?,?,?,?,?,?,?,?)",
+                               (r[1], r[2], r[3], r[4], r[5], r[6], ship_date, sn_path))
+                cursor.execute("DELETE FROM active_records WHERE id = ?", (r[0],))
+                export_data.append({"客戶名稱": r[2], "產品型號": r[4], "SN編號": r[5], "客戶編號": r[3], "建立日期": r[1][:10], "作業人員": r[6], "出貨日期": ship_date})
 
-            done_records.extend(to_archive)
-            save_records(DONE_FILE, done_records)
-            save_records(HIST_FILE, new_active)
-
-            fieldnames = ["客戶名稱", "產品型號", "SN編號", "客戶編號", "建立日期", "作業人員", "出貨日期"]
+            conn.commit()
             with open(csv_path, 'w', newline='', encoding='utf-8-sig') as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer = csv.DictWriter(f, fieldnames=["客戶名稱", "產品型號", "SN編號", "客戶編號", "建立日期", "作業人員", "出貨日期"])
                 writer.writeheader()
                 writer.writerows(export_data)
-                
-            messagebox.showinfo("成功", f"已成功歸檔 {len(to_archive)} 筆資料並產出 CSV！")
-        except Exception as e:
-            messagebox.showerror("錯誤", f"歸檔失敗：{e}")
-
-    refresh_search()
-    refresh_done_tab()
-
+            messagebox.showinfo("成功", f"已成功歸檔 {len(to_archive)} 筆資料！")
+        except Exception as e: messagebox.showerror("錯誤", f"歸檔失敗：{e}")
+    conn.close()
+    refresh_search(); refresh_done_tab()
 
 def treeview_sort_column(tv, col, reverse):
     l = [(tv.set(k, col), k) for k in tv.get_children('')]
@@ -191,233 +227,132 @@ def treeview_sort_column(tv, col, reverse):
     for index, (val, k) in enumerate(l): tv.move(k, '', index)
     tv.heading(col, command=lambda: treeview_sort_column(tv, col, not reverse))
 
-def create_folders():
-    customer, model, sn = entry_customer.get().strip(), entry_model.get().strip(), entry_sn.get().strip()
-    cust_id, staff = entry_cust_id.get().strip(), entry_staff.get().strip()
-    
-    if not (customer and cust_id and model and sn and staff):
-        messagebox.showwarning("提示", "請填寫所有欄位！")
-        return
-        
-    sn_path = os.path.join(DB_PATH, customer, model, sn)
-    today = datetime.now().strftime('%Y%m%d')
-    iqc_folder_name = f"{today}_IQC"
-    iqc_path = os.path.join(sn_path, iqc_folder_name)
-    oqc_path = os.path.join(sn_path, f"{today}_OQC")
-    
-    try:
-        os.makedirs(iqc_path, exist_ok=True)
-        os.makedirs(oqc_path, exist_ok=True)
-        records = load_records(HIST_FILE)
-        records.append({
-            "time": datetime.now().strftime('%Y-%m-%d %H:%M'),
-            "customer": customer, "cust_id": cust_id, "model": model, "sn": sn, "staff": staff, "path": sn_path
-        })
-        save_records(HIST_FILE, records)
-        messagebox.showinfo("成功", "資料夾已建立！")
-        
-        # 建立後直接開啟該筆資料的 IQC 資料夾
-        if os.path.exists(iqc_path): os.startfile(iqc_path)
-        
-        refresh_search()
-    except Exception as e: messagebox.showerror("錯誤", f"建立失敗：{e}")
-
-def refresh_search(event=None):
-    query = entry_search.get().strip().lower()
-    for item in tree.get_children(): tree.delete(item)
-    records = load_records(HIST_FILE)
-    for r in reversed(records):
-        targets = [r.get('sn',''), r.get('customer',''), r.get('cust_id',''), r.get('model',''), r.get('staff','')]
-        if any(query in str(t).lower() for t in targets):
-            
-            # 從記錄中抓出建立日期 (格式如: "2026-04-01 15:30")
-            create_time_str = r.get('time', '')
-            # 轉換成 "20260401"
-            date_keyword = create_time_str[:10].replace("-", "")
-            
-            # 將 date_keyword 丟進去判斷
-            status_text, color_tag = get_folder_status(r['path'], date_keyword)
-            
-            tree.insert("", "end", values=(r['time'], r['customer'], r.get('cust_id', 'N/A'), r['model'], r['sn'], r.get('staff', 'N/A'), status_text, "📂 開啟 IQC", "📂 開啟 OQC", r['path']), tags=(color_tag,))
-
-def refresh_done_tab(event=None):
-    query = entry_done_search.get().strip().lower()
-    for item in tree_done.get_children(): tree_done.delete(item)
-    records = load_records(DONE_FILE)
-    for r in reversed(records):
-        targets = [r.get('sn',''), r.get('customer',''), r.get('cust_id',''), r.get('model',''), r.get('staff',''), r.get('ship_date','')]
-        if any(query in str(t).lower() for t in targets):
-            ship_date = r.get('ship_date', 'N/A')
-            # 填入 IQC 與 OQC 的點擊引導文字
-            tree_done.insert("", "end", values=(r['time'], r['customer'], r.get('cust_id', 'N/A'), r['model'], r['sn'], r.get('staff', 'N/A'), ship_date, "✅ 已歸檔", "📂 開啟 IQC", "📂 開啟 OQC", r['path']), tags=("gray",))
-
 def open_selected(event):
     tv = event.widget
     selected = tv.selection()
     if not selected: return
     
-    # 取得點擊的欄位與被點擊的行資料
-    column = tv.identify_column(event.x)
-    item_values = tv.item(selected, "values")
+    col_id = tv.identify_column(event.x)
+    vals = tv.item(selected, "values")
     
-    # 關鍵：從畫面上抓取「建立時間」 (格式如: 2026-04-01 15:30)
-    # 取出前 10 個字，並把橫線去掉，變成 "20260401"
-    create_time_str = item_values[0] 
-    date_keyword = create_time_str[:10].replace("-", "") 
+    create_time_str = vals[0]
+    date_keyword = create_time_str[:10].replace("-", "").replace("/", "")
     
-    base_path = item_values[-1] # 最後一欄是隱藏的完整路徑
-    
-    if not os.path.exists(base_path):
-        messagebox.showerror("錯誤", f"找不到基礎路徑：\n{base_path}")
+    # 根據不同分頁判定索引
+    if tv == tree:
+        path = vals[9]   # 隱藏路徑在索引 9
+        iqc_btn_id, oqc_btn_id = "#8", "#9"
+    else:
+        path = vals[10]  # 隱藏路徑在索引 10
+        iqc_btn_id, oqc_btn_id = "#9", "#10"
+
+    if not path or path == "None":
+        messagebox.showerror("錯誤", "路徑遺失，無法開啟資料夾。")
         return
 
-    target_path = base_path # 預設路徑
-
-    # 針對「進行中」分頁 (共 10 欄，索引 0~9)
-    if tv == tree:
-        if column == "#8": # 開啟 IQC
-            try:
-                for f in os.listdir(base_path):
-                    # 同時比對 "日期" 與 "IQC" 字眼，精準鎖定
-                    if date_keyword in f and "IQC" in f and os.path.isdir(os.path.join(base_path, f)):
-                        target_path = os.path.join(base_path, f)
-                        break
-            except: pass
-            os.startfile(target_path)
+    if col_id == iqc_btn_id:
+        target_path = os.path.join(path, f"{date_keyword}_IQC")
+        if os.path.exists(target_path): os.startfile(target_path)
+        else: messagebox.showwarning("提示", f"找不到 IQC 資料夾：\n{target_path}")
             
-        elif column == "#9": # 開啟 OQC
-            try:
-                for f in os.listdir(base_path):
-                    # 同時比對 "日期" 與 "OQC" 字眼
-                    if date_keyword in f and "OQC" in f and os.path.isdir(os.path.join(base_path, f)):
-                        target_path = os.path.join(base_path, f)
-                        break
-            except: pass
-            os.startfile(target_path)
+    elif col_id == oqc_btn_id:
+        target_path = os.path.join(path, f"{date_keyword}_OQC")
+        if os.path.exists(target_path): os.startfile(target_path)
+        else: messagebox.showwarning("提示", f"找不到 OQC 資料夾：\n{target_path}")
 
-    # 針對「已歸檔」分頁 (共 11 欄，索引 0~10)
-    elif tv == tree_done:
-        if column == "#9": # 開啟 IQC
-            try:
-                for f in os.listdir(base_path):
-                    if date_keyword in f and "IQC" in f and os.path.isdir(os.path.join(base_path, f)):
-                        target_path = os.path.join(base_path, f)
-                        break
-            except: pass
-            os.startfile(target_path)
-            
-        elif column == "#10": # 開啟 OQC
-            try:
-                for f in os.listdir(base_path):
-                    if date_keyword in f and "OQC" in f and os.path.isdir(os.path.join(base_path, f)):
-                        target_path = os.path.join(base_path, f)
-                        break
-            except: pass
-            os.startfile(target_path)
-
-
-# --- UI 介面 ---
+# ==========================================
+# 3. UI 介面佈局
+# ==========================================
 root = tk.Tk()
-root.title("IQC/OQC 管理系統 v4.3.2")
-root.geometry("1400x850") # 寬度微調大一點，容納更多格子
+root.title(f"IQC/OQC 管理系統 v{CURRENT_VERSION}")
+root.geometry("1400x850")
 
-FONT_MAIN = ("微軟正黑體", 12)
-FONT_BOLD = ("微軟正黑體", 12, "bold")
-
+FONT_MAIN, FONT_BOLD = ("微軟正黑體", 12), ("微軟正黑體", 12, "bold")
 style = ttk.Style()
 style.theme_use('clam')
 style.configure("Treeview.Heading", font=FONT_BOLD)
 style.configure("Treeview", font=FONT_MAIN, rowheight=35)
-style.map("Treeview", background=[('selected', '#347083')])
 
-# 1. 輸入區
 frame_input = tk.LabelFrame(root, text=" 建立IQC資訊 ", font=FONT_BOLD, padx=15, pady=15)
 frame_input.pack(fill="x", padx=20, pady=10)
 
-labels_text = ["客戶名稱:", "產品型號:", "SN 編號:", "客戶編號:", "作業人員:"]
-entries = []
-for i, txt in enumerate(labels_text):
-    tk.Label(frame_input, text=txt, font=FONT_MAIN).grid(row=i//3, column=(i%3)*2, sticky="w", padx=5, pady=8)
-    e = tk.Entry(frame_input, width=18, font=FONT_MAIN)
-    e.grid(row=i//3, column=(i%3)*2+1, padx=5)
-    entries.append(e)
+# 定義輸入框
+tk.Label(frame_input, text="客戶名稱:", font=FONT_MAIN).grid(row=0, column=0, sticky="w", padx=5, pady=8)
+entry_customer = tk.Entry(frame_input, width=18, font=FONT_MAIN)
+entry_customer.grid(row=0, column=1, padx=5)
 
-entry_customer, entry_model, entry_sn, entry_cust_id, entry_staff = entries
-btn_main = tk.Button(frame_input, text="➕ 建立資料夾", command=create_folders, bg="#2E86C1", fg="white", font=FONT_BOLD, width=15)
-btn_main.grid(row=0, column=6, rowspan=2, padx=20, sticky="nswe")
+tk.Label(frame_input, text="產品型號:", font=FONT_MAIN).grid(row=0, column=2, sticky="w", padx=5, pady=8)
+entry_model = tk.Entry(frame_input, width=18, font=FONT_MAIN)
+entry_model.grid(row=0, column=3, padx=5)
 
-# 2. 分頁區
+tk.Label(frame_input, text="SN 編號:", font=FONT_MAIN).grid(row=0, column=4, sticky="w", padx=5, pady=8)
+entry_sn = tk.Entry(frame_input, width=18, font=FONT_MAIN)
+entry_sn.grid(row=0, column=5, padx=5)
+
+tk.Label(frame_input, text="客戶編號:", font=FONT_MAIN).grid(row=1, column=0, sticky="w", padx=5, pady=8)
+entry_cust_id = tk.Entry(frame_input, width=18, font=FONT_MAIN)
+entry_cust_id.grid(row=1, column=1, padx=5)
+
+tk.Label(frame_input, text="作業人員:", font=FONT_MAIN).grid(row=1, column=2, sticky="w", padx=5, pady=8)
+entry_staff = tk.Entry(frame_input, width=18, font=FONT_MAIN)
+entry_staff.grid(row=1, column=3, padx=5)
+
+tk.Button(frame_input, text="➕ 建立資料夾", command=create_folders, bg="#2E86C1", fg="white", font=FONT_BOLD).grid(row=0, column=6, rowspan=2, padx=20, sticky="nswe")
+
 notebook = ttk.Notebook(root)
 notebook.pack(fill="both", expand=True, padx=20, pady=10)
 
-# --- 分頁 1: 進行中 ---
+# --- 進行中分頁 ---
 tab_active = tk.Frame(notebook)
-notebook.add(tab_active, text=" 進行中資料 (點擊儲存格開啟資料夾) ")
-
-frame_search = tk.Frame(tab_active)
-frame_search.pack(fill="x", pady=10, padx=10)
-
-tk.Label(frame_search, text="搜尋:", font=FONT_MAIN).pack(side="left")
-entry_search = tk.Entry(frame_search, font=FONT_MAIN)
-entry_search.pack(side="left", fill="x", expand=True, padx=10)
+notebook.add(tab_active, text=" 進行中資料 ")
+frame_search = tk.Frame(tab_active); frame_search.pack(fill="x", pady=10, padx=10)
+entry_search = tk.Entry(frame_search, font=FONT_MAIN); entry_search.pack(side="left", fill="x", expand=True, padx=10)
 entry_search.bind("<KeyRelease>", refresh_search)
+tk.Button(frame_search, text="🔄 刷新列表", command=refresh_search, font=FONT_MAIN).pack(side="left", padx=5)
+tk.Button(frame_search, text="📦 產出CSV歸檔", command=archive_done_records, bg="#27AE60", fg="white", font=FONT_BOLD).pack(side="right", padx=5)
 
-tk.Button(frame_search, text="🔄 更新狀態", command=refresh_search, font=FONT_MAIN).pack(side="left", padx=5)
-tk.Button(frame_search, text="📦 產出CSV '稽核表單專用'", command=archive_done_records, bg="#27AE60", fg="white", font=FONT_BOLD).pack(side="right", padx=5)
+frame_tree_act = tk.Frame(tab_active); frame_tree_act.pack(fill="both", expand=True, padx=10, pady=5)
+cols_active = ("建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "目前狀態", "IQC 資料夾", "OQC 資料夾", "路徑", "ID")
+tree = ttk.Treeview(frame_tree_act, columns=cols_active, show="headings")
+vsb_act = ttk.Scrollbar(frame_tree_act, orient="vertical", command=tree.yview); vsb_act.pack(side="right", fill="y")
+tree.configure(yscrollcommand=vsb_act.set); tree.pack(side="left", fill="both", expand=True)
 
-# 新增了 "IQC 資料夾" 與 "OQC 資料夾" 欄位
-columns_active = ("建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "目前狀態", "IQC 資料夾", "OQC 資料夾", "路徑")
-tree = ttk.Treeview(tab_active, columns=columns_active, show="headings")
-for col in columns_active: 
-    tree.heading(col, text=col, command=lambda _c=col: treeview_sort_column(tree, _c, False))
-    tree.column(col, width=110, anchor="center")
-tree.column("IQC 資料夾", width=130, anchor="center") # 固定寬度
-tree.column("OQC 資料夾", width=130, anchor="center")
-tree.column("路徑", width=0, stretch=False)
-tree.pack(fill="both", expand=True, padx=10, pady=5)
+for c in cols_active: 
+    tree.heading(c, text=c, command=lambda _c=c: treeview_sort_column(tree, _c, False))
+    tree.column(c, width=110, anchor="center")
+tree.column("路徑", width=0, stretch=False); tree.column("ID", width=0, stretch=False)
 
-# --- 分頁 2: 已歸檔 ---
+# --- 已歸檔分頁 ---
 tab_done = tk.Frame(notebook)
-notebook.add(tab_done, text=" 已歸檔歷史 (Done) ")
+notebook.add(tab_done, text=" 已歸檔歷史 ")
+frame_done_search = tk.Frame(tab_done); frame_done_search.pack(fill="x", pady=10, padx=10)
+entry_done_search = tk.Entry(frame_done_search, font=FONT_MAIN); entry_done_search.pack(side="left", fill="x", expand=True, padx=10)
+entry_done_search.bind("<KeyRelease>", refresh_done_tab)
+tk.Button(frame_done_search, text="🔄 刷新列表", command=refresh_done_tab, font=FONT_MAIN).pack(side="left", padx=5)
 
-frame_done_search = tk.Frame(tab_done)
-frame_done_search.pack(fill="x", pady=10, padx=10)
+frame_tree_dn = tk.Frame(tab_done); frame_tree_dn.pack(fill="both", expand=True, padx=10, pady=10)
+cols_done = ("建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "出貨日期", "狀態", "IQC 資料夾", "OQC 資料夾", "路徑")
+tree_done = ttk.Treeview(frame_tree_dn, columns=cols_done, show="headings")
+vsb_dn = ttk.Scrollbar(frame_tree_dn, orient="vertical", command=tree_done.yview); vsb_dn.pack(side="right", fill="y")
+tree_done.configure(yscrollcommand=vsb_dn.set); tree_done.pack(side="left", fill="both", expand=True)
 
-tk.Label(frame_done_search, text="搜尋:", font=FONT_MAIN).pack(side="left")
-entry_done_search = tk.Entry(frame_done_search, font=FONT_MAIN)
-entry_done_search.pack(side="left", fill="x", expand=True, padx=10)
-entry_done_search.bind("<KeyRelease>", refresh_done_tab) 
-
-tk.Button(frame_done_search, text="🔄 更新狀態", command=refresh_done_tab, font=FONT_MAIN).pack(side="left", padx=5)
-
-# 已歸檔也同步新增了 "IQC 資料夾" 與 "OQC 資料夾" 欄位
-columns_done = ("建立時間", "客戶", "客戶編號", "型號", "SN", "作業人員", "出貨日期", "狀態", "IQC 資料夾", "OQC 資料夾", "路徑")
-tree_done = ttk.Treeview(tab_done, columns=columns_done, show="headings")
-for col in columns_done: 
-    tree_done.heading(col, text=col, command=lambda _c=col: treeview_sort_column(tree_done, _c, False))
-    tree_done.column(col, width=110, anchor="center")
-tree_done.column("IQC 資料夾", width=130, anchor="center")
-tree_done.column("OQC 資料夾", width=130, anchor="center")
+for c in cols_done: 
+    tree_done.heading(c, text=c, command=lambda _c=c: treeview_sort_column(tree_done, _c, False))
+    tree_done.column(c, width=110, anchor="center")
 tree_done.column("路徑", width=0, stretch=False)
-tree_done.pack(fill="both", expand=True, padx=10, pady=10)
 
+# --- 事件綁定 ---
 for t in [tree, tree_done]:
     t.tag_configure("green", background="#DFF2BF", foreground="#270")
     t.tag_configure("orange", background="#FEEFB3", foreground="#9F6000")
     t.tag_configure("red", background="#FFBABA", foreground="#D8000C")
     t.tag_configure("gray", background="#F2F2F2", foreground="#666")
-    
-    # 【關鍵修改】不再使用 Double-1 (雙擊)，改用 <ButtonRelease-1> (單擊放開) 
-    # 這樣使用者只要點擊「📂 開啟 IQC」這格，就會瞬間觸發打開。
     t.bind("<ButtonRelease-1>", open_selected)
 
-path_info = tk.Label(root, text=f"📍 資料夾根路徑: {DB_PATH}", fg="gray", font=("微軟正黑體", 10))
-# path_info.pack(side="bottom", anchor="w", padx=20, pady=5) # 這是您原本最後幾行
+footer_frame = tk.Frame(root, bg="#F0F0F0", height=30); footer_frame.pack(side="bottom", fill="x")
+lbl_db_path = tk.Label(footer_frame, text=f"💡 資料來源：{SQLITE_DB}", fg="#555555", font=("微軟正黑體", 10), bg="#F0F0F0", padx=20)
+lbl_db_path.pack(side="left")
 
-refresh_search()
-refresh_done_tab()
-
-# 讓程式在顯示視窗後，100 毫秒(0.1秒)立刻悄悄執行版本檢查
+refresh_search(); refresh_done_tab()
 root.after(100, check_for_updates)
-
 root.mainloop()
