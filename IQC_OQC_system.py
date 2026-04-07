@@ -8,9 +8,9 @@ import tkinter as tk
 from tkinter import messagebox, ttk, filedialog
 
 # ==========================================
-# 0. 版本號與手動更新 (維持原狀)
+# 0. 版本號與手動更新
 # ==========================================
-CURRENT_VERSION = "4.5.0" 
+CURRENT_VERSION = "4.5.1" 
 UPDATE_DIR = r"\\fs2\Dept(Q)\08_p03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\IOQC_folder_history"
 VERSION_FILE_PATH = os.path.join(UPDATE_DIR, "version.txt")
 REMOTE_ZIP_PATH = os.path.join(UPDATE_DIR, "IQC_OQC_system.zip")
@@ -77,11 +77,15 @@ def get_folder_status(sn_path, date_keyword):
     has_iqc, has_oqc = False, False
     try:
         for folder in os.listdir(sn_path):
+            # 判斷邏輯：資料夾名稱包含日期(YYYYMMDD)且包含IQC/OQC關鍵字
             if date_keyword in folder and os.path.isdir(os.path.join(sn_path, folder)):
-                has_files = any(os.path.isfile(os.path.join(sn_path, folder, f)) for f in os.listdir(os.path.join(sn_path, folder)))
+                # 檢查資料夾內是否有任何檔案
+                files = os.listdir(os.path.join(sn_path, folder))
+                has_files = any(os.path.isfile(os.path.join(sn_path, folder, f)) for f in files)
                 if "IQC" in folder and has_files: has_iqc = True
                 if "OQC" in folder and has_files: has_oqc = True
     except: pass
+    
     if has_iqc and has_oqc: return "✅ 已完成", "green"
     if has_iqc or has_oqc: return "⚠️ 部分上傳", "orange"
     return "❌ 尚未放照片", "red"
@@ -97,8 +101,8 @@ def create_folders():
         messagebox.showwarning("提示", "請填寫所有欄位！")
         return
     
-    # 【修正重點】路徑改為：根目錄 / 客戶名稱 / SN 編號
-    sn_path = os.path.join(DB_PATH, customer, sn)
+    # 【最新修正路徑】層級：根目錄 / 客戶名稱 / 產品型號 / SN 編號
+    sn_path = os.path.join(DB_PATH, customer, model, sn)
     today = datetime.now().strftime('%Y%m%d')
     iqc_path = os.path.join(sn_path, f"{today}_IQC")
     oqc_path = os.path.join(sn_path, f"{today}_OQC")
@@ -116,13 +120,15 @@ def create_folders():
         conn.commit()
         conn.close()
         
-        messagebox.showinfo("成功", f"資料夾已建立！")
+        messagebox.showinfo("成功", f"資料夾已建立！\n位置：{model} / {sn}")
         if os.path.exists(iqc_path): os.startfile(iqc_path)
         refresh_search()
     except Exception as e: 
         messagebox.showerror("錯誤", f"建立失敗：{e}")
 
-# (其餘 refresh_search, refresh_done_tab, archive_done_records 邏輯維持不變)
+# ==========================================
+# 3. 介面重新整理與歸檔
+# ==========================================
 
 def refresh_search(event=None):
     query = entry_search.get().strip().lower()
@@ -162,7 +168,7 @@ def archive_done_records():
         if status == "✅ 已完成": to_archive.append(r)
     
     if not to_archive:
-        messagebox.showinfo("提示", "沒有符合「已完成」狀態的資料。")
+        messagebox.showinfo("提示", "沒有符合「已完成」狀態的資料可供歸檔。")
         conn.close(); return
 
     csv_path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile=f"IOQC_Archive_{datetime.now().strftime('%Y%m%d')}.csv")
@@ -179,7 +185,7 @@ def archive_done_records():
             with open(csv_path, 'w', newline='', encoding='utf-8-sig') as f:
                 writer = csv.DictWriter(f, fieldnames=["客戶名稱", "產品型號", "SN編號", "客戶編號", "建立日期", "作業人員", "出貨日期"])
                 writer.writeheader(); writer.writerows(export_data)
-            messagebox.showinfo("成功", f"已歸檔 {len(to_archive)} 筆資料！")
+            messagebox.showinfo("成功", f"歸檔完成，共 {len(to_archive)} 筆。")
         except Exception as e: messagebox.showerror("錯誤", f"歸檔失敗：{e}")
     conn.close(); refresh_search(); refresh_done_tab()
 
@@ -199,16 +205,21 @@ def open_selected(event):
     path = vals[9] if tv == tree else vals[10]
     iqc_btn_id, oqc_btn_id = ("#8", "#9") if tv == tree else ("#9", "#10")
 
-    if not path or path == "None": return
+    if not path or path == "None" or not os.path.exists(path):
+        messagebox.showerror("錯誤", "找不到實體資料夾路徑。")
+        return
+
     if col_id == iqc_btn_id:
         target = os.path.join(path, f"{date_keyword}_IQC")
         if os.path.exists(target): os.startfile(target)
+        else: messagebox.showwarning("提示", "找不到對應日期的 IQC 資料夾。")
     elif col_id == oqc_btn_id:
         target = os.path.join(path, f"{date_keyword}_OQC")
         if os.path.exists(target): os.startfile(target)
+        else: messagebox.showwarning("提示", "找不到對應日期的 OQC 資料夾。")
 
 # ==========================================
-# 3. UI 介面 (維持原狀)
+# 4. UI 介面佈局
 # ==========================================
 root = tk.Tk()
 root.title(f"IQC/OQC 管理系統 v{CURRENT_VERSION}")
@@ -238,6 +249,7 @@ tk.Button(frame_input, text="➕ 建立資料夾", command=create_folders, bg="#
 
 notebook = ttk.Notebook(root); notebook.pack(fill="both", expand=True, padx=20, pady=10)
 
+# --- 進行中分頁 ---
 tab_active = tk.Frame(notebook); notebook.add(tab_active, text=" 進行中資料 ")
 frame_search = tk.Frame(tab_active); frame_search.pack(fill="x", pady=10, padx=10)
 entry_search = tk.Entry(frame_search, font=FONT_MAIN); entry_search.pack(side="left", fill="x", expand=True, padx=10)
@@ -252,6 +264,7 @@ for c in cols_active:
     tree.column(c, width=110, anchor="center")
 tree.column("路徑", width=0, stretch=False); tree.column("ID", width=0, stretch=False)
 
+# --- 已歸檔分頁 ---
 tab_done = tk.Frame(notebook); notebook.add(tab_done, text=" 已歸檔歷史 ")
 frame_done_search = tk.Frame(tab_done); frame_done_search.pack(fill="x", pady=10, padx=10)
 entry_done_search = tk.Entry(frame_done_search, font=FONT_MAIN); entry_done_search.pack(side="left", fill="x", expand=True, padx=10)
@@ -265,6 +278,7 @@ for c in cols_done:
     tree_done.column(c, width=110, anchor="center")
 tree_done.column("路徑", width=0, stretch=False)
 
+# 樣式配置與事件綁定
 for t in [tree, tree_done]:
     t.tag_configure("green", background="#DFF2BF", foreground="#270")
     t.tag_configure("orange", background="#FEEFB3", foreground="#9F6000")
