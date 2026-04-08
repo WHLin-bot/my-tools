@@ -12,10 +12,8 @@ from tkinter import messagebox, ttk, filedialog
 # ==========================================
 
 CURRENT_VERSION = "4.6.0" 
-#UPDATE_DIR = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\IOQC_folder_history"
-#DB_PATH = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區"
-UPDATE_DIR = r"C:\Users\POLO LIN\Desktop\IQC"
-DB_PATH = r"C:\Users\POLO LIN\Desktop\IQC"
+UPDATE_DIR = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區\IOQC_folder_history"
+DB_PATH = r"\\fs2\Dept(Q)\08_品保處\03_客戶服務部\99_Public\IQC_OQC_新竹_進出料檢照片區"
 SQLITE_DB = os.path.join(UPDATE_DIR, "ioqc_management.db")
 VERSION_FILE_PATH = os.path.join(UPDATE_DIR, "version.txt")
 REMOTE_ZIP_PATH = os.path.join(UPDATE_DIR, "IQC_OQC_system.zip")
